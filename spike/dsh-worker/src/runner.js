@@ -210,6 +210,10 @@ export class RunManager {
 }
 
 async function defaultApprovalClient({ run, approval }) {
+  // S0 冒烟模式：只用于本地验证工具链路，生产禁用
+  if (process.env.APPROVAL_MODE === 'auto') {
+    return { approved: true, by: 'worker-auto' };
+  }
   if (!run.approvalUrl) {
     // 失败关闭：没有审批通道就不放行
     return { approved: false, by: 'no-approver' };

@@ -50,7 +50,10 @@ export function createBackendFactory(env = process.env) {
   if (mode !== 'sdk') throw new Error(`unknown DSH_BACKEND: ${mode}`);
 
   const command = env.DSH_BIN ?? 'dsh';
-  const args = (env.DSH_ARGS ?? '--profile sdk').split(/\s+/).filter(Boolean);
+  // 路径含空格时用 JSON 数组传参（DSH_ARGS 适合简单场景）
+  const args = env.DSH_ARGS_JSON
+    ? JSON.parse(env.DSH_ARGS_JSON)
+    : (env.DSH_ARGS ?? '--profile sdk').split(/\s+/).filter(Boolean);
   const factory = (options) =>
     new SdkBackend({
       ...options,

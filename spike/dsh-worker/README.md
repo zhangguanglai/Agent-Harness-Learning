@@ -118,3 +118,27 @@ GET  /healthz
 - [ ] 度量 DSH 冷启动耗时与常驻内存（决定预热池大小）
 - [ ] 验证审批超时 / 拒绝时 DSH 的收尾行为
 - [ ] 验证 Windows 下进程树回收（`taskkill /T` 在受限环境的权限）
+
+## 真实模型验证（需要 Key）
+
+预检不需要 Key；冒烟需要 `DEEPSEEK_API_KEY`（或内部网关等价配置）。
+
+```bash
+# 1) 预检：Node 24 / DSH CLI / MCP 工具面 / bundle 组合
+python spike/dsh-worker/scripts/real_check.py
+
+# 2) 冒烟：真实模型 + MCP 工具 + 自动审批
+DEEPSEEK_API_KEY=sk-... python spike/dsh-worker/scripts/real_check.py --run --dsh-home spike/.dsh-run
+```
+
+| 退出码 | 含义 |
+| --- | --- |
+| 0 | 模型确实调用了 `mcp__banking-a__*` 工具 |
+| 2 | 预检通过但缺少 Key（未跑冒烟） |
+| 1 | 预检或冒烟失败 |
+
+冒烟做的事：用 `dsh --profile sdk --patch spike/dsh-bundle/cordis.patch.yml` 起 SDK runtime
+（profile 建在 `--dsh-home` 指定的工作区目录，不写用户目录），worker 以 `APPROVAL_MODE=auto`
+放行工具调用，然后断言事件流里出现 `mcp__banking-a__` 前缀的工具结果。
+
+> `APPROVAL_MODE=auto` 只用于本地冒烟；生产必须走控制面审批。

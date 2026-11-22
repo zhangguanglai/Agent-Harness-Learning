@@ -24,3 +24,6 @@ spike/**/probe-frames.jsonl
 .vscode/
 .idea/
 .DS_Store
+
+# 真实模型冒烟用的临时 DSH_HOME
+spike/.dsh-run/
