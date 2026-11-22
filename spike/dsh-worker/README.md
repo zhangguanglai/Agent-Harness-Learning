@@ -119,26 +119,40 @@ GET  /healthz
 - [ ] 验证审批超时 / 拒绝时 DSH 的收尾行为
 - [ ] 验证 Windows 下进程树回收（`taskkill /T` 在受限环境的权限）
 
-## 真实模型验证（需要 Key）
+## 真实模型验证（已完成 ✅）
 
-预检不需要 Key；冒烟需要 `DEEPSEEK_API_KEY`（或内部网关等价配置）。
+2026-11-22 在本机用 DeepSeek 官方 Key 跑通：**模型确实调用了 MCP 工具**，不是编造。
+
+```
+✓ Node: 24.21.0（要求 ≥ 24.9）
+✓ DSH CLI: 0.2.2-rc.5
+✓ MCP 工具面: ['doc.extract', 'kb.search', 'rule.evaluate']
+✓ bundle 组合: patch 可合成
+✓ 真实模型: 模型调用了 ['mcp__banking-a__kb_search_902417ef9f96']
+```
 
 ```bash
-# 1) 预检：Node 24 / DSH CLI / MCP 工具面 / bundle 组合
+# 预检（不需要 Key）
 python spike/dsh-worker/scripts/real_check.py
 
-# 2) 冒烟：真实模型 + MCP 工具 + 自动审批
+# 冒烟（消费少量额度；profile 建在工作区，不写用户目录）
 DEEPSEEK_API_KEY=sk-... python spike/dsh-worker/scripts/real_check.py --run --dsh-home spike/.dsh-run
 ```
 
 | 退出码 | 含义 |
 | --- | --- |
-| 0 | 模型确实调用了 `mcp__banking-a__*` 工具 |
-| 2 | 预检通过但缺少 Key（未跑冒烟） |
+| 0 | 模型确实调用了 `mcp__banking-a__*` |
+| 2 | 预检通过但缺 Key |
 | 1 | 预检或冒烟失败 |
 
-冒烟做的事：用 `dsh --profile sdk --patch spike/dsh-bundle/cordis.patch.yml` 起 SDK runtime
-（profile 建在 `--dsh-home` 指定的工作区目录，不写用户目录），worker 以 `APPROVAL_MODE=auto`
-放行工具调用，然后断言事件流里出现 `mcp__banking-a__` 前缀的工具结果。
+### 实测踩出来的五个点
+
+1. **provider 路由是 `deepseek-official`**，传 `deepseek` 会报 `no adapter registered`；
+2. **工具名会被规范化**：`kb.search` → `mcp__banking-a__kb_search_<短哈希>`，
+   权限规则与断言要用**前缀匹配**，不要写死全名；
+3. **SDK `initialize` 必须带 `cwd`**，缺省会报 `path.resolve paths[0] undefined`；
+4. **同一 `DSH_HOME` 下 session id 不能复用**，冒烟脚本用时间戳生成 run_id；
+5. **真实事件在 `session.event` 里**：`tool/call`、`tool/result`、`assistant/message`、
+   `turn/end`；`src/protocol.js` 已把 `tool/call` 提炼成 `payload.tool` / `payload.tool_args`。
 
 > `APPROVAL_MODE=auto` 只用于本地冒烟；生产必须走控制面审批。

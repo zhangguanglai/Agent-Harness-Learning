@@ -33,17 +33,26 @@ export function makeEvent({ runId, tenantId, seq, type, payload = {} }) {
  */
 export function normalizeNotification(method, params = {}) {
   switch (method) {
-    case 'session.event':
-      return [
-        {
-          type: 'session.event',
-          payload: {
-            session_id: params.sessionId,
-            // 原样保留：真实字段待 probe 验证
-            event: params.event ?? null,
-          },
-        },
-      ];
+    case 'session.event': {
+      const raw = params.event ?? null;
+      const rawType = raw?.type ?? null;
+      const data = raw?.data ?? {};
+      const payload = {
+        session_id: params.sessionId,
+        raw_type: rawType,
+        event: raw,
+      };
+      // 真实 DSH 把工具调用放在 session.event 的 tool/call 里（已用 0.2.2-rc.5 实测）
+      if (rawType === 'tool/call') {
+        payload.tool = data.name ?? null;
+        payload.tool_args = data.arguments ?? null;
+        payload.call_id = data.callId ?? null;
+      }
+      if (rawType === 'assistant/message') {
+        payload.text = extractText(raw);
+      }
+      return [{ type: 'session.event', payload }];
+    }
     case 'session.status':
       return [{ type: 'run.status', payload: { status: params.status } }];
     case 'session.query.completed':
@@ -71,7 +80,8 @@ export function extractText(rawEvent) {
   if (!rawEvent || typeof rawEvent !== 'object') return '';
   if (typeof rawEvent.text === 'string') return rawEvent.text;
   if (typeof rawEvent.delta === 'string') return rawEvent.delta;
-  const blocks = rawEvent.message?.content ?? rawEvent.content;
+  const data = rawEvent.data ?? rawEvent;
+  const blocks = data.message?.content ?? data.content ?? rawEvent.message?.content ?? rawEvent.content;
   if (Array.isArray(blocks)) {
     return blocks
       .map((block) => (typeof block === 'string' ? block : block?.text ?? ''))

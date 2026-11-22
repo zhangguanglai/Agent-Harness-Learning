@@ -11,7 +11,7 @@ export class SessionBackend {
   constructor({ provider = 'deepseek', model = 'deepseek-chat', cwd, onEvent, onApproval, onExit }) {
     this.provider = provider;
     this.model = model;
-    this.cwd = cwd;
+    this.cwd = cwd ?? process.cwd();
     this.onEvent = onEvent ?? (() => {});
     this.onApproval = onApproval;
     this.onExit = onExit;

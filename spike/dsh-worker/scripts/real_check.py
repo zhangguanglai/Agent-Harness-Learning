@@ -113,6 +113,8 @@ def run_smoke(port: int, timeout_s: float = 180) -> tuple[bool, str]:
         ),
         "BANKING_A_HOME": str(ROOT),
         "APPROVAL_MODE": "auto",
+        "DSH_PROVIDER": os.environ.get("DSH_PROVIDER", "deepseek-official"),
+        "DSH_MODEL": os.environ.get("DSH_MODEL", "deepseek-chat"),
         "PORT": str(port),
         "MAX_WALL_MS": str(int(timeout_s * 1000)),
     }
@@ -137,9 +139,10 @@ def run_smoke(port: int, timeout_s: float = 180) -> tuple[bool, str]:
         else:
             return False, "worker 未能启动"
 
+        run_id = f"real-smoke-{int(time.time())}"
         body = json.dumps(
             {
-                "run_id": "real-smoke-1",
+                "run_id": run_id,
                 "tenant_id": "demo",
                 "task": "请用 kb.search 工具检索「数据出境 安全评估」，把命中的条款 id 告诉我，不要编造。",
             }
@@ -149,20 +152,41 @@ def run_smoke(port: int, timeout_s: float = 180) -> tuple[bool, str]:
 
         deadline = time.time() + timeout_s
         while time.time() < deadline:
-            with urllib.request.urlopen(f"{base}/v1/runs/real-smoke-1", timeout=5) as response:
+            with urllib.request.urlopen(f"{base}/v1/runs/{run_id}", timeout=5) as response:
                 status = json.loads(response.read())["status"]
             if status in {"succeeded", "failed", "cancelled"}:
                 break
             time.sleep(0.5)
-        events = json.loads(urllib.request.urlopen(f"{base}/v1/runs/real-smoke-1/events", timeout=10).read())["events"]
-        tools = {
-            str(event["payload"].get("tool"))
-            for event in events
-            if event["type"] == "tool_result"
-        }
+        events = json.loads(urllib.request.urlopen(f"{base}/v1/runs/{run_id}/events", timeout=10).read())["events"]
+        dump = Path(os.environ.get("DSH_HOME", ".")) / "last-events.json"
+        dump.write_text(json.dumps(events, ensure_ascii=False, indent=2), encoding="utf-8")
+        shapes = []
+        for event in events:
+            if event["type"] == "session.event":
+                raw = (event.get("payload") or {}).get("event") or {}
+                shapes.append((raw.get("type"), sorted((raw.get("data") or {}).keys())))
+        print(f"… session.event 形状：{shapes}")
+        tools: set[str] = set()
+        for event in events:
+            if event["type"] == "tool_result":
+                tools.add(str(event["payload"].get("tool")))
+            if event["type"] == "session.event":
+                payload = event.get("payload") or {}
+                if payload.get("tool"):
+                    tools.add(str(payload["tool"]))
+                raw = payload.get("event") or {}
+                if raw.get("type") == "tool/call":
+                    tools.add(str((raw.get("data") or {}).get("name")))
         used_mcp = any(name.startswith("mcp__banking-a__") for name in tools)
         if not used_mcp:
-            return False, f"模型没有调用 banking-a 工具，实际调用：{sorted(tools)}"
+            kinds = [event["type"] for event in events]
+            errors = [
+                (event["type"], str(event.get("payload"))[:300])
+                for event in events
+                if event["type"] in {"run.failed", "worker.stderr", "dsh.notification"}
+            ]
+            samples = [str(event.get("payload"))[:400] for event in events if event["type"] == "session.event"][:4]
+            return False, f"模型没有调用 banking-a 工具，status={status}, kinds={kinds[-8:]}, errors={errors[-2:]}, samples={samples}"
         return True, f"模型调用了 {sorted(name for name in tools if name.startswith('mcp__banking-a__'))}"
     finally:
         worker.terminate()
