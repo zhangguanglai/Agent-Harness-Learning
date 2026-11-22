@@ -74,6 +74,7 @@ python -m mini_harness run "给 README 加一节快速开始" \
 ├── bench/                       # 任务级评测（6 个任务 + CI 门禁）
 ├── domain/                      # 领域包：banking_a（跨境数据出境评估，含 MCP 工具与评测）
 ├── orchestrator/                # S1 编排：run 状态机 / 审批闸门 / 产物版本 / SSE
+├── deploy/                      # 容器化：Dockerfile / entrypoint / compose / 验证
 ├── spike/                       # S0 验证件（DSH worker：HTTP ↔ SDK 适配）
 ├── labs/                        # 10 个机制实验 + verify.py
 ├── docs/                        # 12 篇分层专题
@@ -81,7 +82,7 @@ python -m mini_harness run "给 README 加一节快速开始" \
 └── skills/                      # 两个示例 Skill（渐进披露的素材）
 ```
 
-## 读什么：十八个分层文档
+## 读什么：十九个分层文档
 
 | 文档 | 主题 | 一句话 |
 | --- | --- | --- |
@@ -104,6 +105,7 @@ python -m mini_harness run "给 README 加一节快速开始" \
 | [16](docs/16-implementation-plan.md) | 实施方案 | S0–S3 里程碑、团队分工、测试策略、预算与验收 |
 | [17](docs/17-banking-gba-scenarios.md) | 银行场景 | 大湾区实验室的 5 个候选场景、评分、MVP 任务样例与评测集 |
 | [18](docs/18-s1-orchestration.md) | S1 编排 | 提交 → 评估 → 审批 → 定稿 的状态机、接口与产物版本 |
+| [19](docs/19-s0-container.md) | 容器化 | S0-1：镜像分层、安全默认、网络策略与验证矩阵 |
 
 ## 章节 → 笔记 映射
 

@@ -1,0 +1,27 @@
+services:
+  worker:
+    build:
+      context: ../..
+      dockerfile: deploy/s0-container/Dockerfile
+    image: banking-a/s0:local
+    command: ["worker"]
+    environment:
+      DSH_BACKEND: sdk
+      DSH_PROVIDER: deepseek-official
+      DSH_MODEL: deepseek-chat
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:?set DEEPSEEK_API_KEY}
+      BANKING_A_HOME: /opt/banking-a
+    ports:
+      - "8080:8080"
+    volumes:
+      - ../../spike/.dsh-run:/home/harness/.dsh
+    read_only: true
+    tmpfs:
+      - /tmp:rw,size=64m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges
+    pids_limit: 256
+    mem_limit: 2g
+    cpus: 2
