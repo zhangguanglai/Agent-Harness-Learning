@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# è¿è¡Œäº§ç‰©
+.mini/
+.mini-demo/
+labs/_tmp/
+
+# ç¼–è¾‘å™¨
+.vscode/
+.idea/
+.DS_Store
+
+# ±¾µØÍÆËÍÃÜÔ¿£¨²»Èë¿â£©
+.ssh-local/
+.git-keys/
+*.pub
+

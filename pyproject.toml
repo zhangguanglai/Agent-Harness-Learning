@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mini-harness"
+version = "0.1.0"
+description = "一个用来学习 Agent Harness 的极简 Python 实现（零依赖）"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Agent Harness Learning" }]
+keywords = ["agent", "harness", "llm", "tool-use", "education"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Topic :: Education",
+]
+
+[project.scripts]
+mini-harness = "mini_harness.cli:main"
+
+[tool.setuptools]
+packages = ["mini_harness"]
