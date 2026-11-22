@@ -133,7 +133,7 @@ rt.submit(RunRequest(..., llm=llm))
 | 执行隔离 | 本机进程 + Job Object | 每 run 一个容器/微虚机，只读根 + 网络白名单 |
 | 存储 | SQLite 单机 | Postgres + 分区 + 归档；事件表按月分区 |
 | 调度 | 进程内线程池 | 队列（SQS/Redis）+ 独立 worker 部署 + 背压 |
-| API | 直接调 Python | HTTP/SSE：submit / events / cancel / approvals |
+| API | 直接调 Python | 标准库 HTTP/SSE 已实现（见 [13 HTTP API](13-http-api.md)）；生产需 TLS、多副本与事件总线 |
 | 鉴权 | 调用方传 tenant/user | OIDC/JWT → 主体；服务账号与 scope |
 | 配额 | 无 | per-tenant 并发、token、时长三类配额 |
 | 审批 | 内存 broker | 持久化审批表 + Webhook/IM 通知 + 双人审批 |

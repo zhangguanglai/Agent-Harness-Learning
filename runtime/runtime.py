@@ -170,6 +170,22 @@ class Runtime:
         handle.wait(timeout)
         return handle
 
+    # -- 查询（供 API / 运维使用） ------------------------------------------ #
+    def get(self, run_id: str) -> RunHandle | None:
+        with self._lock:
+            return self._handles.get(run_id)
+
+    def handles(self) -> list[RunHandle]:
+        with self._lock:
+            return list(self._handles.values())
+
+    def active_runs(self, tenant: str | None = None) -> list[RunHandle]:
+        return [
+            h
+            for h in self.handles()
+            if not h.finished and (tenant is None or h.request.tenant == tenant)
+        ]
+
     def close(self) -> None:
         self._pool.shutdown(wait=True)
 

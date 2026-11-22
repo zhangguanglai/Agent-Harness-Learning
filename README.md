@@ -23,6 +23,9 @@ python labs/verify.py
 
 # 3. 任务级评测（CI 可用）
 python bench/run.py --min-pass-rate 0.8
+
+# 4. 启动 HTTP API（鉴权 / SSE / 审批 / 租户隔离）
+python -m api --port 8765 --token "dev-token=demo:alice:operator"
 ```
 
 `demo` 会：列目录 → 读 README → 写 NOTES.md → 收尾，并把完整轨迹落到
@@ -63,14 +66,19 @@ python -m mini_harness run "给 README 加一节快速开始" \
 │   ├── gateway.py               #   工具网关：受控重试、错误码统计
 │   ├── policy.py                #   租户 / 用户 / 角色能力
 │   └── approvals.py             #   审批状态机（waiting_approval）
+├── api/                         # HTTP API + SSE（标准库实现）
+│   ├── server.py                #   路由、鉴权、限流、SSE
+│   ├── auth.py                  #   token → Principal、令牌桶
+│   ├── client.py                #   Python 客户端
+│   └── __main__.py              #   python -m api
 ├── bench/                       # 任务级评测（6 个任务 + CI 门禁）
-├── labs/                        # 9 个机制实验 + verify.py
+├── labs/                        # 10 个机制实验 + verify.py
 ├── docs/                        # 12 篇分层专题
 │   └── appendix/                # 18 册章节精读（对应站点 62 篇）
 └── skills/                      # 两个示例 Skill（渐进披露的素材）
 ```
 
-## 读什么：十二个分层文档
+## 读什么：十三个分层文档
 
 | 文档 | 主题 | 一句话 |
 | --- | --- | --- |
@@ -87,6 +95,7 @@ python -m mini_harness run "给 README 加一节快速开始" \
 | [10](docs/10-learning-path.md) | 学习路径 | 四周路线 + 40 题自测 + 总映射 |
 | [11](docs/11-production-harness.md) | 生产化 | 从教学实现到生产 Harness 的规划、架构与必做扩展 |
 | [12](docs/12-runtime-skeleton.md) | 运行时骨架 | Phase 0 六个 PR 的落地：事件溯源、网关、审批、沙箱、bench |
+| [13](docs/13-http-api.md) | HTTP API | 鉴权、租户隔离、SSE 事件流、取消与审批的控制面 |
 
 ## 章节 → 笔记 映射
 
@@ -122,6 +131,7 @@ python -m mini_harness run "给 README 加一节快速开始" \
 | [lab07](labs/lab07_trace_cost.py) | 轨迹与账本 | seq 连续、账本一致、可归因 |
 | [lab08](labs/lab08_runtime.py) | 运行时骨架 | 事件溯源、崩溃后重建、取消穿透进程组 |
 | [lab09](labs/lab09_gateway_policy.py) | 网关与治理 | 只读重试、写操作不重试、审批留痕、角色拒绝 |
+| [lab10](labs/lab10_http_api.py) | HTTP API | 401、SSE 收尾、取消、审批、跨租户 404、限流 |
 
 任务级评测：[bench/](bench/) 6 个任务（读改文件、超时、越界、审批、角色），
 `python bench/run.py --min-pass-rate 0.8` 可直接作 CI 门禁。
