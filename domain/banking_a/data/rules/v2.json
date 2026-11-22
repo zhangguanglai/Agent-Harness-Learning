@@ -1,0 +1,24 @@
+{
+  "version": "v2",
+  "note": "收紧阈值版本，用于验证规则版本回归；上线前必须按最新法规与行内口径校准",
+  "thresholds": {
+    "assessment_pi": 1000000,
+    "assessment_sensitive": 5000,
+    "contract_pi": 50000
+  },
+  "exemptions": ["跨境贸易", "集团内部人力资源管理", "紧急情况", "学术合作"],
+  "citations": {
+    "not_applicable": ["REG-DATA-EXPORT#第3条"],
+    "security_assessment": ["REG-DATA-EXPORT#第4条", "REG-PIPL#第40条"],
+    "standard_contract": ["REG-DATA-EXPORT#第5条", "REG-PIPL#第38条"],
+    "exempt_small": ["REG-DATA-EXPORT#第6条", "REG-PIPL#第39条"],
+    "exempt_scenario": ["REG-DATA-EXPORT#第6条", "POLICY-DE-V3#5.4 告知与同意"]
+  },
+  "required_evidence": {
+    "not_applicable": ["数据流说明"],
+    "security_assessment": ["数据出境安全评估申报表", "数据出境风险自评估报告", "PIPIA 报告"],
+    "standard_contract": ["标准合同备案号", "PIPIA 报告"],
+    "exempt_small": ["告知同意记录", "数据出境情况说明"],
+    "exempt_scenario": ["豁免依据说明", "告知同意记录"]
+  }
+}

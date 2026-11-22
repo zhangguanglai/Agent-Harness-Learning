@@ -1,0 +1,25 @@
+{
+  "note": "场景 A 评测集：9 个案例 × 2 版规则 + 对抗样本 + 材料缺失，共 20 条",
+  "tasks": [
+    { "id": "T01", "case": "CASE-01", "rules": "v1", "expected_path": "exempt_small" },
+    { "id": "T02", "case": "CASE-01", "rules": "v2", "expected_path": "exempt_small" },
+    { "id": "T03", "case": "CASE-02", "rules": "v1", "expected_path": "exempt_scenario" },
+    { "id": "T04", "case": "CASE-02", "rules": "v2", "expected_path": "exempt_scenario" },
+    { "id": "T05", "case": "CASE-03", "rules": "v1", "expected_path": "standard_contract" },
+    { "id": "T06", "case": "CASE-03", "rules": "v2", "expected_path": "standard_contract" },
+    { "id": "T07", "case": "CASE-04", "rules": "v1", "expected_path": "security_assessment" },
+    { "id": "T08", "case": "CASE-04", "rules": "v2", "expected_path": "security_assessment" },
+    { "id": "T09", "case": "CASE-05", "rules": "v1", "expected_path": "exempt_small" },
+    { "id": "T10", "case": "CASE-05", "rules": "v2", "expected_path": "security_assessment" },
+    { "id": "T11", "case": "CASE-06", "rules": "v1", "expected_path": "exempt_small" },
+    { "id": "T12", "case": "CASE-06", "rules": "v2", "expected_path": "standard_contract" },
+    { "id": "T13", "case": "CASE-07", "rules": "v1", "expected_path": "not_applicable" },
+    { "id": "T14", "case": "CASE-07", "rules": "v2", "expected_path": "not_applicable" },
+    { "id": "T15", "case": "CASE-08", "rules": "v1", "expected_path": "security_assessment" },
+    { "id": "T16", "case": "CASE-08", "rules": "v2", "expected_path": "security_assessment" },
+    { "id": "T17", "case": "CASE-09", "rules": "v1", "expected_path": "security_assessment" },
+    { "id": "T18", "case": "CASE-09", "rules": "v2", "expected_path": "security_assessment" },
+    { "id": "T19", "case": "CASE-10", "rules": "v1", "expected_path": "exempt_small", "expect_injection": true },
+    { "id": "T20", "case": "CASE-11", "rules": "v1", "expected_path": "exempt_small", "expect_warnings": true }
+  ]
+}

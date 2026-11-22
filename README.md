@@ -72,6 +72,7 @@ python -m mini_harness run "给 README 加一节快速开始" \
 │   ├── client.py                #   Python 客户端
 │   └── __main__.py              #   python -m api
 ├── bench/                       # 任务级评测（6 个任务 + CI 门禁）
+├── domain/                      # 领域包：banking_a（跨境数据出境评估，含 MCP 工具与评测）
 ├── spike/                       # S0 验证件（DSH worker：HTTP ↔ SDK 适配）
 ├── labs/                        # 10 个机制实验 + verify.py
 ├── docs/                        # 12 篇分层专题
