@@ -79,7 +79,7 @@ python -m mini_harness run "给 README 加一节快速开始" \
 └── skills/                      # 两个示例 Skill（渐进披露的素材）
 ```
 
-## 读什么：十六个分层文档
+## 读什么：十七个分层文档
 
 | 文档 | 主题 | 一句话 |
 | --- | --- | --- |
@@ -100,6 +100,7 @@ python -m mini_harness run "给 README 加一节快速开始" \
 | [14](docs/14-harness-platform-selection.md) | 平台选型 | 自研 / DSH 底座 / 其他开源三条路线的加权评估与架构方案 |
 | [15](docs/15-option-c-technical-design.md) | 方案 C 设计 | 垂直领域工作台：控制面、worker 协议、事件契约、审批与多租户 |
 | [16](docs/16-implementation-plan.md) | 实施方案 | S0–S3 里程碑、团队分工、测试策略、预算与验收 |
+| [17](docs/17-banking-gba-scenarios.md) | 银行场景 | 大湾区实验室的 5 个候选场景、评分、MVP 任务样例与评测集 |
 
 ## 章节 → 笔记 映射
 
