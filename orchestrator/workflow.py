@@ -98,6 +98,7 @@ class AssessmentWorkflow:
         run_id: str,
         case_id: str,
         *,
+        rules_version: str = "v1",
         request_approval: Callable[[str, str, dict], tuple[bool, str, str]],
     ) -> None:
         store = self.store
@@ -115,7 +116,9 @@ class AssessmentWorkflow:
             },
         )
 
-        decision = evaluate(facts, self.rulesets["v1"])
+        if rules_version not in self.rulesets:
+            raise ValueError(f"未知规则版本：{rules_version}")
+        decision = evaluate(facts, self.rulesets[rules_version])
         store.append_event(run_id, "rules.evaluated", decision.to_dict())
 
         valid, missing = self.kb.index.validate(decision.citations)

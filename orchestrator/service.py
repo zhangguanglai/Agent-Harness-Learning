@@ -35,6 +35,8 @@ from .store import Store
 from .worker_client import WorkerClient, WorkerError
 from .workflow import AssessmentWorkflow
 
+from api.auth import AuthError, Principal, TokenRegistry
+
 DATA = Path(domain_file).parent / "data"
 TERMINAL = {"completed", "rejected", "failed"}
 
@@ -62,9 +64,12 @@ class Orchestrator:
         worker_approval: str = "auto",
         public_url: str | None = None,
         otel_endpoint: str | None = None,
+        tokens: TokenRegistry | None = None,
+        artifact_dir: str | Path | None = None,
+        artifact_store=None,
     ):
         base = Path(root) if root else Path(__file__).parent / "_data"
-        self.store = Store(base / "orchestrator.db", base / "artifacts")
+        self.store = Store(base / "orchestrator.db", artifact_store or (artifact_dir or base / "artifacts"))
         self.workflow = AssessmentWorkflow(
             self.store,
             corpus_dir=DATA / "corpus",
@@ -76,30 +81,33 @@ class Orchestrator:
         self.worker = WorkerClient(worker_url) if worker_url else None
         self.worker_approval = worker_approval  # auto | wait
         self.public_url = public_url
+        self.tokens = tokens
         self.tracer = Tracer(otel_endpoint, service="orchestrator", attributes={"deployment": "s0"})
         self.spans: dict[str, object] = {}
         self.gates: dict[str, Gate] = {}
         self._lock = threading.Lock()
 
     # -- API --------------------------------------------------------------- #
-    def submit(self, case_id: str, tenant: str = "demo") -> dict:
+    def submit(self, case_id: str, tenant: str = "demo", rules_version: str = "v1") -> dict:
         if case_id not in self.workflow.cases:
             raise ValueError(f"未知案例：{case_id}")
-        run = self.store.create_run(case_id, tenant)
+        if rules_version not in self.workflow.rulesets:
+            raise ValueError(f"未知规则版本：{rules_version}")
+        run = self.store.create_run(case_id, tenant, rules_version)
         self.spans[run.id] = self.tracer.start(
             "assessment.run",
             attributes={"run.id": run.id, "case.id": case_id, "tenant.id": tenant},
         )
-        self.store.append_event(run.id, "run.queued", {"case_id": case_id, "tenant": tenant})
-        threading.Thread(target=self._run, args=(run.id, case_id), daemon=True).start()
+        self.store.append_event(run.id, "run.queued", {"case_id": case_id, "tenant": tenant, "rules_version": rules_version})
+        threading.Thread(target=self._run, args=(run.id, case_id, rules_version), daemon=True).start()
         return {"run_id": run.id, "status": "running", "events_url": f"/v1/assessments/{run.id}/events"}
 
-    def _run(self, run_id: str, case_id: str) -> None:
+    def _run(self, run_id: str, case_id: str, rules_version: str = "v1") -> None:
         try:
-            self.store.append_event(run_id, "run.started", {"case_id": case_id})
+            self.store.append_event(run_id, "run.started", {"case_id": case_id, "rules_version": rules_version})
             if self.worker is not None:
                 self._run_agent(run_id, case_id)
-            self.workflow.run(run_id, case_id, request_approval=self.request_approval)
+            self.workflow.run(run_id, case_id, rules_version=rules_version, request_approval=self.request_approval)
         except Exception as exc:  # noqa: BLE001 —— 失败要落事件
             self.store.set_status(run_id, "failed", error=f"{type(exc).__name__}: {exc}")
             self.store.append_event(run_id, "assessment.failed", {"error": str(exc)})
@@ -248,16 +256,21 @@ class Orchestrator:
             "case_id": run.case_id,
             "tenant": run.tenant,
             "status": run.status,
+            "rules_version": run.rules_version,
             "decision": run.decision,
             "error": run.error,
         }
 
-    def pending(self) -> list[dict]:
-        return [
-            pending
-            for run in self._all_runs()
-            if (pending := self.store.pending_approval(run["id"]))
-        ]
+    def pending(self, tenant: str | None = None) -> list[dict]:
+        rows = []
+        for run_id in self.store.recent_runs():
+            run = self.store.get_run(run_id)
+            if run is None or (tenant is not None and run.tenant != tenant):
+                continue
+            pending = self.store.pending_approval(run_id)
+            if pending:
+                rows.append(pending)
+        return rows
 
     def _all_runs(self) -> list[dict]:
         return [{"id": run_id} for run_id in self.store.recent_runs()]
@@ -299,6 +312,28 @@ def make_server(orchestrator: Orchestrator, host: str = "127.0.0.1", port: int =
                 return {}
             return json.loads(self.rfile.read(length).decode("utf-8"))
 
+        def _principal(self, scope: str) -> Principal | None:
+            if orchestrator.tokens is None:
+                # 开发模式：未配置 token 时放行，但固定 tenant=demo
+                return Principal(token="dev", tenant="demo", user="dev", roles=("admin",))
+            try:
+                principal = orchestrator.tokens.authenticate(self.headers.get("Authorization"))
+            except AuthError as exc:
+                self._json(401, {"error": str(exc)})
+                return None
+            if not principal.has(scope):
+                self._json(403, {"error": f"缺少 scope: {scope}"})
+                return None
+            return principal
+
+        def _run_for(self, principal: Principal, run_id: str):
+            run = orchestrator.store.get_run(run_id)
+            if run is None:
+                raise KeyError(run_id)
+            if orchestrator.tokens is not None and run.tenant != principal.tenant:
+                raise KeyError(run_id)  # 跨租户一律 404，不泄露存在性
+            return run
+
         def do_GET(self) -> None:  # noqa: N802
             self._dispatch(self._route_get)
 
@@ -310,6 +345,8 @@ def make_server(orchestrator: Orchestrator, host: str = "127.0.0.1", port: int =
                 fn()
             except KeyError as exc:
                 self._json(404, {"error": f"not found: {exc.args[0] if exc.args else ''}"})
+            except PermissionError as exc:
+                self._json(403, {"error": str(exc)})
             except ValueError as exc:
                 self._json(400, {"error": str(exc)})
             except WorkerError as exc:
@@ -324,15 +361,20 @@ def make_server(orchestrator: Orchestrator, host: str = "127.0.0.1", port: int =
             path, query = url.path, parse_qs(url.query)
             if path == "/healthz":
                 return self._json(200, {"ok": True, "runs": len(orchestrator._all_runs()), "worker": bool(orchestrator.worker)})
+
+            principal = self._principal("runs:read")
+            if principal is None:
+                return
             if path == "/v1/approvals":
-                return self._json(200, {"approvals": orchestrator.pending()})
+                tenant = None if orchestrator.tokens is None else principal.tenant
+                return self._json(200, {"approvals": orchestrator.pending(tenant)})
 
             parts = path.strip("/").split("/")
             if len(parts) >= 3 and parts[0] == "v1" and parts[1] == "assessments":
                 run_id = parts[2]
+                run = self._run_for(principal, run_id)
                 if len(parts) == 3:
-                    status = orchestrator.status(run_id)
-                    return self._json(404, {"error": "not found"}) if status is None else self._json(200, status)
+                    return self._json(200, orchestrator.status(run_id))
                 if parts[3] == "events":
                     after = int((query.get("after") or ["0"])[0])
                     if "text/event-stream" in (self.headers.get("accept") or ""):
@@ -344,16 +386,39 @@ def make_server(orchestrator: Orchestrator, host: str = "127.0.0.1", port: int =
 
         def _route_post(self) -> None:
             url = urlsplit(self.path)
-            if url.path == "/v1/assessments":
-                body = self._body()
-                return self._json(202, orchestrator.submit(body.get("case_id", ""), body.get("tenant", "demo")))
             if url.path == "/v1/worker-approvals":
+                # service-to-service：生产应加 mTLS/worker token
                 return self._json(200, orchestrator.worker_approval_decision(self._body()))
+
+            if url.path == "/v1/assessments":
+                principal = self._principal("runs:write")
+                if principal is None:
+                    return
+                body = self._body()
+                if orchestrator.tokens is None:
+                    tenant = str(body.get("tenant") or principal.tenant)
+                else:
+                    tenant = str(body.get("tenant") or principal.tenant)
+                    if tenant != principal.tenant:
+                        raise PermissionError("不得为其他租户提交任务")
+                return self._json(
+                    202,
+                    orchestrator.submit(
+                        str(body.get("case_id", "")),
+                        tenant,
+                        str(body.get("rules_version") or "v1"),
+                    ),
+                )
+
             parts = url.path.strip("/").split("/")
             if len(parts) == 4 and parts[1] == "assessments" and parts[3] == "approve":
+                principal = self._principal("approvals:write")
+                if principal is None:
+                    return
+                self._run_for(principal, parts[2])
                 body = self._body()
                 result = orchestrator.approve(
-                    parts[2], bool(body.get("approved")), str(body.get("by") or "reviewer"), str(body.get("comment") or "")
+                    parts[2], bool(body.get("approved")), str(body.get("by") or principal.user), str(body.get("comment") or "")
                 )
                 return self._json(200, result)
             return self._json(404, {"error": f"unknown path: {url.path}"})

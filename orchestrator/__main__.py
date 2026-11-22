@@ -6,6 +6,8 @@ import argparse
 import sys
 from pathlib import Path
 
+from api.auth import TokenRegistry
+
 from .service import Orchestrator, make_server
 
 
@@ -23,6 +25,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--approval-timeout", type=float, default=600.0)
     parser.add_argument("--worker-url", default=None, help="spike/dsh-worker 地址，如 http://127.0.0.1:8080")
     parser.add_argument(
+        "--token",
+        action="append",
+        default=[],
+        metavar="TOKEN=TENANT:USER:ROLES",
+        help="启用鉴权；可重复。例：--token t-acme=acme:alice:operator",
+    )
+    parser.add_argument("--artifact-dir", default=None, help="产物目录（默认 <data>/artifacts）")
+    parser.add_argument(
         "--worker-approval",
         choices=["auto", "wait"],
         default="auto",
@@ -30,16 +40,20 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
+    tokens = TokenRegistry.from_specs(args.token) if args.token else None
     orchestrator = Orchestrator(
         args.data,
         approval_timeout_s=args.approval_timeout,
         worker_url=args.worker_url,
         worker_approval=args.worker_approval,
+        tokens=tokens,
+        artifact_dir=Path(args.artifact_dir) if args.artifact_dir else None,
     )
     server = make_server(orchestrator, args.host, args.port)
     print(f"评估编排服务已启动: http://{args.host}:{server.server_address[1]}")
     if args.worker_url:
         print(f"agent 阶段交给 worker: {args.worker_url}（审批策略 {args.worker_approval}）")
+    print(f"鉴权：{'已启用（' + str(len(args.token)) + ' 个 token）' if tokens else '未启用（开发模式）'}")
     try:
         server.serve_forever(poll_interval=0.2)
     except KeyboardInterrupt:

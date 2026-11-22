@@ -20,11 +20,13 @@ import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
+from .artifacts import ArtifactStore, LocalArtifactStore
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS runs (
   id TEXT PRIMARY KEY, case_id TEXT NOT NULL, tenant TEXT NOT NULL,
   status TEXT NOT NULL, created_at REAL NOT NULL, finished_at REAL,
-  decision TEXT, error TEXT
+  decision TEXT, error TEXT, rules_version TEXT NOT NULL DEFAULT 'v1'
 );
 CREATE TABLE IF NOT EXISTS events (
   run_id TEXT NOT NULL, seq INTEGER NOT NULL, type TEXT NOT NULL,
@@ -53,26 +55,39 @@ class Run:
     finished_at: float | None = None
     decision: dict | None = None
     error: str | None = None
+    rules_version: str = "v1"
 
 
 class Store:
-    def __init__(self, db_path: str | Path, artifacts_dir: str | Path):
+    def __init__(self, db_path: str | Path, artifacts: ArtifactStore | str | Path):
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        self.artifacts_dir = Path(artifacts_dir)
-        self.artifacts_dir.mkdir(parents=True, exist_ok=True)
+        self.artifact_store = artifacts if hasattr(artifacts, "put") else LocalArtifactStore(artifacts)  # type: ignore[arg-type]
         self._lock = threading.RLock()
         self._conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
         self._conn.executescript(SCHEMA)
+        self._ensure_column("runs", "rules_version", "TEXT NOT NULL DEFAULT 'v1'")
         self._conn.commit()
 
+    def _ensure_column(self, table: str, column: str, ddl: str) -> None:
+        existing = {row[1] for row in self._conn.execute(f"PRAGMA table_info({table})")}
+        if column not in existing:
+            self._conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
+
     # -- run --------------------------------------------------------------- #
-    def create_run(self, case_id: str, tenant: str) -> Run:
-        run = Run(id=f"run_{uuid.uuid4().hex[:12]}", case_id=case_id, tenant=tenant, status="running", created_at=time.time())
+    def create_run(self, case_id: str, tenant: str, rules_version: str = "v1") -> Run:
+        run = Run(
+            id=f"run_{uuid.uuid4().hex[:12]}",
+            case_id=case_id,
+            tenant=tenant,
+            status="running",
+            created_at=time.time(),
+            rules_version=rules_version,
+        )
         with self._lock:
             self._conn.execute(
-                "INSERT INTO runs (id, case_id, tenant, status, created_at) VALUES (?, ?, ?, ?, ?)",
-                (run.id, run.case_id, run.tenant, run.status, run.created_at),
+                "INSERT INTO runs (id, case_id, tenant, status, created_at, rules_version) VALUES (?, ?, ?, ?, ?, ?)",
+                (run.id, run.case_id, run.tenant, run.status, run.created_at, run.rules_version),
             )
             self._conn.commit()
         return run
@@ -80,7 +95,7 @@ class Store:
     def get_run(self, run_id: str) -> Run | None:
         with self._lock:
             row = self._conn.execute(
-                "SELECT id, case_id, tenant, status, created_at, finished_at, decision, error FROM runs WHERE id = ?",
+                "SELECT id, case_id, tenant, status, created_at, finished_at, decision, error, rules_version FROM runs WHERE id = ?",
                 (run_id,),
             ).fetchone()
         if not row:
@@ -88,6 +103,7 @@ class Store:
         return Run(
             id=row[0], case_id=row[1], tenant=row[2], status=row[3], created_at=row[4],
             finished_at=row[5], decision=json.loads(row[6]) if row[6] else None, error=row[7],
+            rules_version=row[8] if len(row) > 8 else "v1",
         )
 
     def set_status(self, run_id: str, status: str, *, decision: dict | None = None, error: str | None = None) -> None:
@@ -160,11 +176,8 @@ class Store:
 
     # -- artifacts --------------------------------------------------------- #
     def write_artifact(self, run_id: str, filename: str, content: str, *, status: str) -> dict:
-        run_dir = self.artifacts_dir / run_id
-        run_dir.mkdir(parents=True, exist_ok=True)
-        path = run_dir / filename
-        path.write_text(content, encoding="utf-8")
-        digest = hashlib.sha256(content.encode("utf-8")).hexdigest()
+        stored = self.artifact_store.put(run_id, filename, content)
+        path, digest = stored.path, stored.sha256
         with self._lock:
             version = self._conn.execute("SELECT COALESCE(MAX(version), 0) + 1 FROM artifacts WHERE run_id = ?", (run_id,)).fetchone()[0]
             artifact = {
