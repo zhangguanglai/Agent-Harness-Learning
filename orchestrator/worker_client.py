@@ -29,8 +29,19 @@ class WorkerClient:
     def health(self) -> dict:
         return self._json("GET", "/healthz")
 
-    def submit(self, *, run_id: str, task: str, approval_url: str | None, tenant: str = "demo", workspace: str | None = None) -> dict:
+    def submit(
+        self,
+        *,
+        run_id: str,
+        task: str,
+        approval_url: str | None,
+        tenant: str = "demo",
+        workspace: str | None = None,
+        traceparent: str | None = None,
+    ) -> dict:
         payload = {"run_id": run_id, "tenant_id": tenant, "task": task}
+        if traceparent:
+            payload["traceparent"] = traceparent
         if approval_url:
             payload["approval_url"] = approval_url
         if workspace:

@@ -74,7 +74,8 @@ python -m mini_harness run "给 README 加一节快速开始" \
 ├── bench/                       # 任务级评测（6 个任务 + CI 门禁）
 ├── domain/                      # 领域包：banking_a（跨境数据出境评估，含 MCP 工具与评测）
 ├── orchestrator/                # S1 编排：run 状态机 / 审批闸门 / 产物版本 / SSE
-├── deploy/                      # 容器化：Dockerfile / entrypoint / compose / 验证
+├── deploy/                      # 容器化与 OTel collector
+├── observability/               # OTLP 追踪（Python，零依赖）
 ├── spike/                       # S0 验证件（DSH worker：HTTP ↔ SDK 适配）
 ├── labs/                        # 10 个机制实验 + verify.py
 ├── docs/                        # 12 篇分层专题
@@ -82,7 +83,7 @@ python -m mini_harness run "给 README 加一节快速开始" \
 └── skills/                      # 两个示例 Skill（渐进披露的素材）
 ```
 
-## 读什么：十九个分层文档
+## 读什么：二十个分层文档
 
 | 文档 | 主题 | 一句话 |
 | --- | --- | --- |
@@ -106,6 +107,7 @@ python -m mini_harness run "给 README 加一节快速开始" \
 | [17](docs/17-banking-gba-scenarios.md) | 银行场景 | 大湾区实验室的 5 个候选场景、评分、MVP 任务样例与评测集 |
 | [18](docs/18-s1-orchestration.md) | S1 编排 | 提交 → 评估 → 审批 → 定稿 的状态机、接口与产物版本 |
 | [19](docs/19-s0-container.md) | 容器化 | S0-1：镜像分层、安全默认、网络策略与验证矩阵 |
+| [20](docs/20-otel.md) | 追踪 | S0-5：OTLP span 树、traceparent 传播、收集器与实测 |
 
 ## 章节 → 笔记 映射
 
@@ -146,6 +148,7 @@ python -m mini_harness run "给 README 加一节快速开始" \
 | [lab12](labs/lab12_dsh_bundle.py) | 领域 bundle | 清单 / MCP 工具面 / DSH 组合三层校验 |
 | [lab13](labs/lab13_orchestrator.py) | S1 编排 | 免审批、审批留痕、拒绝、SSE、引用 |
 | [lab14](labs/lab14_worker_integration.py) | 编排 × worker | worker 事件回灌、审批 auto/wait 两种策略 |
+| [lab15](labs/lab15_otel.py) | 追踪 | 同一 trace 的 span 链、token 计量、collector 故障韧性 |
 
 任务级评测：[bench/](bench/) 6 个任务（读改文件、超时、越界、审批、角色），
 `python bench/run.py --min-pass-rate 0.8` 可直接作 CI 门禁。

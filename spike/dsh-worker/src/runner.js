@@ -7,6 +7,7 @@
  * - 不做配额/计费/鉴权（控制面的事）。
  */
 import { makeEvent, normalizeNotification, TERMINAL_TYPES, extractText } from './protocol.js';
+import { Tracer } from './otel.js';
 
 const TERMINAL_STATUS = {
   'run.succeeded': 'succeeded',
@@ -21,8 +22,10 @@ export class RunManager {
     approvalClient,
     maxWallMs = Number(process.env.MAX_WALL_MS ?? 15 * 60 * 1000),
     maxEvents = 20_000,
+    tracer = new Tracer(),
   }) {
     this.backendFactory = backendFactory;
+    this.tracer = tracer;
     this.approvalClient = approvalClient ?? defaultApprovalClient;
     this.maxWallMs = maxWallMs;
     this.maxEvents = maxEvents;
@@ -30,7 +33,7 @@ export class RunManager {
     this.startedAt = Date.now();
   }
 
-  create({ runId, tenantId, task, workspace, preset, limits, approvalUrl }) {
+  create({ runId, tenantId, task, workspace, preset, limits, approvalUrl, traceparent }) {
     if (!runId) throw badRequest('run_id is required');
     if (!task) throw badRequest('task is required');
     if (this.runs.has(runId)) throw conflict(`run ${runId} already exists`);
@@ -52,6 +55,12 @@ export class RunManager {
       lastText: '',
       createdAt: Date.now(),
       wallTimer: null,
+      tokens: { input: 0, output: 0 },
+      openToolSpan: null,
+      span: this.tracer.start('worker.run', {
+        traceparent,
+        attributes: { 'run.id': runId, 'tenant.id': tenantId ?? 'default' },
+      }),
     };
     this.runs.set(runId, run);
     this._emit(run, 'run.queued', { task, preset: run.preset });
@@ -137,7 +146,22 @@ export class RunManager {
         continue;
       }
       if (event.type === 'session.event') {
-        const text = extractText(event.payload.event);
+        const raw = event.payload.event ?? {};
+        if (raw.type === 'tool/call') {
+          const data = raw.data ?? {};
+          run.openToolSpan = this.tracer.start('worker.tool', {
+            traceparent: `00-${run.span.traceId}-${run.span.spanId}-01`,
+            attributes: { 'tool.name': data.name ?? '', 'run.id': run.id },
+          });
+        } else if (raw.type === 'tool/result') {
+          this.tracer.end(run.openToolSpan);
+          run.openToolSpan = null;
+        } else if (raw.type === 'assistant/message') {
+          const usage = (raw.data ?? {}).usage ?? {};
+          run.tokens.input += Number(usage.input_tokens ?? usage.inputTokens ?? 0);
+          run.tokens.output += Number(usage.output_tokens ?? usage.outputTokens ?? 0);
+        }
+        const text = extractText(raw);
         if (text) run.lastText = text;
       }
       this._emit(run, event.type, event.payload);
@@ -203,6 +227,11 @@ export class RunManager {
     const event = this._emit(run, type, payload);
     run.closed = true;
     run.subscribers.clear();
+    this.tracer.end(run.openToolSpan);
+    run.span.attributes['run.status'] = run.status;
+    run.span.attributes['llm.input_tokens'] = run.tokens.input;
+    run.span.attributes['llm.output_tokens'] = run.tokens.output;
+    this.tracer.end(run.span, { error: type === 'run.failed' ? payload?.error ?? 'failed' : undefined });
     // 终态后回收 DSH 子进程：否则 worker 进程会被子进程句柄拖住
     Promise.resolve(run.backend?.stop?.()).catch(() => {});
     return event;

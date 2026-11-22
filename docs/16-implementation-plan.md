@@ -30,7 +30,7 @@ S3                                              ██████████�
 | S0-2 | 写一个 bundle（工具 + 权限预设） | npm 包（已完成：[spike/dsh-bundle](../spike/dsh-bundle/README.md)） | `--dump-config` 能看到自定义工具与 preset ✅ |
 | S0-3 | sidecar 驱动 SDK：submit/events/cancel | `dsh-worker` 骨架（已完成） | 事件顺序正确，取消 3s 内生效；真实模型已调通 ✅ |
 | S0-4 | 审批外置 | 临时 HTTP 审批桩 | DSH `ask` → 外部批准 → 任务继续 |
-| S0-5 | OTel 与 token 计量 | collector + 面板 | 一次 run 能看到 trace 与 token |
+| S0-5 | OTel 与 token 计量 | [observability/](../observability/) + [collector](../deploy/otel/collector.py) | 一次 run 能看到 trace 与 token ✅ |
 
 **退出标准**：5 项全过 → 进入 S1；S0-1 或 S0-3 失败 → 暂停，评估降级为自研路线（见 [14](14-harness-platform-selection.md)）。
 **产出物**：`spike/` 目录 + 一页结论备忘（含实际耗时与坑）。

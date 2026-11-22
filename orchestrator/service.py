@@ -29,6 +29,8 @@ from urllib.parse import parse_qs, urlsplit
 
 from domain.banking_a import __file__ as domain_file
 
+from observability import Tracer
+
 from .store import Store
 from .worker_client import WorkerClient, WorkerError
 from .workflow import AssessmentWorkflow
@@ -59,6 +61,7 @@ class Orchestrator:
         worker_url: str | None = None,
         worker_approval: str = "auto",
         public_url: str | None = None,
+        otel_endpoint: str | None = None,
     ):
         base = Path(root) if root else Path(__file__).parent / "_data"
         self.store = Store(base / "orchestrator.db", base / "artifacts")
@@ -73,6 +76,8 @@ class Orchestrator:
         self.worker = WorkerClient(worker_url) if worker_url else None
         self.worker_approval = worker_approval  # auto | wait
         self.public_url = public_url
+        self.tracer = Tracer(otel_endpoint, service="orchestrator", attributes={"deployment": "s0"})
+        self.spans: dict[str, object] = {}
         self.gates: dict[str, Gate] = {}
         self._lock = threading.Lock()
 
@@ -81,6 +86,10 @@ class Orchestrator:
         if case_id not in self.workflow.cases:
             raise ValueError(f"未知案例：{case_id}")
         run = self.store.create_run(case_id, tenant)
+        self.spans[run.id] = self.tracer.start(
+            "assessment.run",
+            attributes={"run.id": run.id, "case.id": case_id, "tenant.id": tenant},
+        )
         self.store.append_event(run.id, "run.queued", {"case_id": case_id, "tenant": tenant})
         threading.Thread(target=self._run, args=(run.id, case_id), daemon=True).start()
         return {"run_id": run.id, "status": "running", "events_url": f"/v1/assessments/{run.id}/events"}
@@ -99,15 +108,31 @@ class Orchestrator:
             pending = self.store.pending_approval(run_id)
             if pending and run and run.status in {"rejected", "failed"}:
                 self.store.resolve_approval(pending["id"], False, by="timeout", comment="approval timed out")
+            span = self.spans.pop(run_id, None)
+            if span is not None:
+                span.attributes["run.status"] = run.status if run else "unknown"
+                span.end(error=run.error if run and run.error else None)
 
     # -- agent 阶段（worker） ---------------------------------------------- #
     def _run_agent(self, run_id: str, case_id: str) -> None:
         assert self.worker is not None
         task = f"评估案例 {case_id}：判断是否构成数据出境、适用哪条路径、需要哪些材料。"
         self.store.append_event(run_id, "agent.submitted", {"worker": self.worker.base_url, "task": task})
+        run_span = self.spans.get(run_id)
+        agent_span = self.tracer.start(
+            "agent.run",
+            parent=run_span.traceparent if run_span else None,
+            attributes={"run.id": run_id, "worker": self.worker.base_url},
+        )
         approval_url = f"{self.public_url}/v1/worker-approvals" if self.public_url else None
         try:
-            self.worker.submit(run_id=run_id, task=task, approval_url=approval_url, tenant="demo")
+            self.worker.submit(
+                run_id=run_id,
+                task=task,
+                approval_url=approval_url,
+                tenant="demo",
+                traceparent=agent_span.traceparent,
+            )
         except WorkerError as exc:
             self.store.append_event(run_id, "agent.failed", {"error": str(exc)})
             raise
@@ -143,6 +168,8 @@ class Orchestrator:
             "agent.completed",
             {"worker_status": status, "final_response": (terminal.get("payload") or {}).get("final_response", "")},
         )
+        agent_span.attributes["agent.status"] = status
+        agent_span.end()
 
     # -- 审批 -------------------------------------------------------------- #
     def request_approval(self, run_id: str, action: str, extra: dict | None = None) -> tuple[bool, str, str]:
@@ -156,7 +183,16 @@ class Orchestrator:
             "approval.requested",
             {"approval_id": approval["id"], "action": action, **(extra or {})},
         )
+        run_span = self.spans.get(run_id)
+        approval_span = self.tracer.start(
+            "approval.wait",
+            parent=run_span.traceparent if run_span else None,
+            attributes={"run.id": run_id, "approval.action": action},
+        )
         approved, by, comment = gate.wait(self.approval_timeout_s)
+        approval_span.attributes["approval.approved"] = approved
+        approval_span.attributes["approval.by"] = by
+        approval_span.end()
         self.store.resolve_approval(approval["id"], approved, by, comment)
         self.store.append_event(
             run_id,

@@ -52,6 +52,7 @@ async function handle(req, res, manager, factory) {
       preset: body.preset,
       limits: body.limits,
       approvalUrl: body.approval_url,
+      traceparent: body.traceparent,
     });
     return respondJson(res, 202, {
       run_id: run.id,

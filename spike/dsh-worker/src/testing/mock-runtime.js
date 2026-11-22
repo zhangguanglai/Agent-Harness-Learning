@@ -62,13 +62,26 @@ export function createMockRuntime({
 
   async function runTurn(params = {}) {
     sessionId = params.sessionId ?? sessionId;
-    emit({ type: 'user_message', text: params.contentBlocks?.[0]?.text ?? '(mock input)' });
+    emit({ type: 'user/message', data: { role: 'user', content: [{ type: 'text', text: params.contentBlocks?.[0]?.text ?? '(mock input)' }] } });
     peer.notify('session.status', { sessionId, status: 'running' });
 
     for (let step = 1; step <= steps; step += 1) {
       await sleep(delay);
       if (stopped) return;
-      emit({ type: 'assistant_message', step, text: `mock step ${step}` });
+      if (step === 1) {
+        emit({ type: 'tool/call', data: { name: 'kb.search', callId: 'mock-call-1', arguments: { query: '数据出境' } } });
+      }
+      emit({
+        type: 'assistant/message',
+        data: {
+          step,
+          message: { content: [{ type: 'text', text: `mock step ${step}` }] },
+          usage: { input_tokens: 120 * step, output_tokens: 30 * step },
+        },
+      });
+      if (step === 2) {
+        emit({ type: 'tool/result', data: { callId: 'mock-call-1', name: 'kb.search', ok: true } });
+      }
       if (needApproval && step === 2) {
         const outcome = await peer
           .request('approval/request', {
@@ -79,11 +92,11 @@ export function createMockRuntime({
           })
           .catch((err) => ({ outcome: 'rejected', reason: err.message }));
         if (stopped) return;
-        emit({ type: 'approval_result', outcome: outcome.outcome });
+        emit({ type: 'approval/result', data: { outcome: outcome.outcome } });
       }
     }
 
-    emit({ type: 'assistant_message', step: steps, text: 'mock done' });
+    emit({ type: 'assistant/message', step: steps, text: 'mock done' });
     peer.notify('session.query.completed', {
       sessionId,
       commandId: 'cmd_mock',
