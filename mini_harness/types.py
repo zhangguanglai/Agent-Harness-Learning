@@ -111,7 +111,11 @@ class LLMResponse:
 
 @dataclass
 class ToolResult:
-    """工具执行结果。错误不抛异常，而是成为一条可读的 tool 消息。"""
+    """工具执行结果。错误不抛异常，而是成为一条可读的 tool 消息。
+
+    `error_code` / `retryable` 是给运行时（而不是模型）看的：前者用于指标与告警，
+    后者决定是否自动重试。模型侧仍然只看自然语言。
+    """
 
     name: str
     call_id: str
@@ -121,6 +125,9 @@ class ToolResult:
     denied: bool = False
     exit_code: int | None = None
     duration_ms: float = 0.0
+    error_code: str = ""
+    retryable: bool = False
+    meta: dict = field(default_factory=dict)
 
     def to_message(self) -> dict:
         if self.ok:
@@ -128,7 +135,11 @@ class ToolResult:
         elif self.denied:
             body = f"[DENIED] {self.error}"
         else:
-            body = f"[ERROR] {self.error}"
+            tag = f"[ERROR {self.error_code}] " if self.error_code else "[ERROR] "
+            body = tag + self.error
+        hint = self.meta.get("hint")
+        if hint and not self.ok:
+            body += f"\n（建议：{hint}）"
         return tool_message(self.call_id, self.name, body)
 
     def to_dict(self) -> dict:
@@ -139,6 +150,8 @@ class ToolResult:
             "denied": self.denied,
             "exit_code": self.exit_code,
             "duration_ms": round(self.duration_ms, 2),
+            "error_code": self.error_code,
+            "retryable": self.retryable,
             "output": self.output,
             "error": self.error,
         }

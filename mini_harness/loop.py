@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import hashlib
+import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -82,6 +83,10 @@ class Agent:
         name: str = "lead",
         depth: int = 0,
         on_event: Callable[[dict], None] | None = None,
+        cancel_event: threading.Event | None = None,
+        sandbox: object | None = None,
+        policy: PermissionPolicy | None = None,
+        tool_executor: Callable[[ToolCall, ToolContext], ToolResult] | None = None,
     ):
         self.llm = llm
         self.config = config or AgentConfig()
@@ -91,6 +96,9 @@ class Agent:
         self.hooks = hooks or Hooks()
         self.approver = approver
         self.on_event = on_event
+        self.cancel_event = cancel_event
+        self.sandbox = sandbox
+        self.tool_executor = tool_executor
         self.usage = Usage()
         self.turns = 0
         self.denials: list[str] = []
@@ -116,7 +124,9 @@ class Agent:
 
         self.ctx = ToolContext(workspace=Path(self.config.workspace), memory=self.memory, skills=self.skills, agent=self)
         self.ctx.extra["registry"] = self.registry
-        self.policy = PermissionPolicy(
+        self.ctx.extra["cancel_event"] = cancel_event
+        self.ctx.extra["sandbox"] = sandbox
+        self.policy = policy or PermissionPolicy(
             mode=self.config.mode,
             allow=self.config.allow,
             deny=self.config.deny,
@@ -161,7 +171,7 @@ class Agent:
         final_text = ""
 
         while True:
-            if self._interrupted:
+            if self._cancelled():
                 stopped, final_text = "interrupted", "已中断。"
                 break
             if self.turns >= self.config.max_turns:
@@ -190,6 +200,18 @@ class Agent:
                 tool_calls=[c.name for c in response.tool_calls],
             )
             self._emit({"type": "assistant", "text": response.text, "tool_calls": [c.summary() for c in response.tool_calls]})
+            self._emit(
+                {
+                    "type": "llm_response",
+                    "turn": self.turns,
+                    "input_tokens": response.usage.input_tokens,
+                    "output_tokens": response.usage.output_tokens,
+                    "text": response.text,
+                    "tool_calls": [
+                        {"id": c.id, "name": c.name, "arguments": c.arguments} for c in response.tool_calls
+                    ],
+                }
+            )
 
             self.messages.append(assistant_message(response.text, response.tool_calls))
 
@@ -201,6 +223,10 @@ class Agent:
             results = self._execute(response.tool_calls)
             for result in results:
                 self.messages.append(result.to_message())
+
+            if self._cancelled():
+                stopped, final_text = "interrupted", "任务已中断。"
+                break
 
             if results and all(r.denied for r in results):
                 self._consecutive_denied_turns += 1
@@ -235,6 +261,15 @@ class Agent:
 
     def interrupt(self) -> None:
         self._interrupted = True
+
+    def _cancelled(self) -> bool:
+        """协作式取消：运行时通过 `cancel_event` 从外部打断。"""
+        if self._interrupted:
+            return True
+        if self.cancel_event is not None and self.cancel_event.is_set():
+            self._interrupted = True
+            return True
+        return False
 
     # ------------------------------------------------------------------ #
     # 工具执行
@@ -277,15 +312,42 @@ class Agent:
         for i in serial_idx:
             results[i] = self._run_one(prepared[i][1], prepared[i][0])
 
-        return [r or ToolResult(name=c.name, call_id=c.id, ok=False, error="未执行") for c, r in zip(calls, results)]
+        return [
+            r
+            or ToolResult(
+                name=c.name,
+                call_id=c.id,
+                ok=False,
+                error="任务已取消，未执行",
+                error_code="CANCELLED",
+            )
+            for c, r in zip(calls, results)
+        ]
 
     def _run_one(self, call: ToolCall, decision: Decision) -> ToolResult:
         self.tracer.emit("tool_call", agent=self.name, turn=self.turns, tool=call.name, args=call.arguments)
+        self._emit({"type": "tool_call", "tool": call.name, "args": call.arguments, "call_id": call.id})
         if not decision.allowed:
             self.denials.append(f"{call.name}: {decision.reason}")
-            result = ToolResult(name=call.name, call_id=call.id, ok=False, denied=True, error=decision.reason)
+            result = ToolResult(
+                name=call.name,
+                call_id=call.id,
+                ok=False,
+                denied=True,
+                error=decision.reason,
+                error_code="DENIED",
+            )
+        elif self._cancelled():
+            result = ToolResult(
+                name=call.name,
+                call_id=call.id,
+                ok=False,
+                error="任务已取消，未执行",
+                error_code="CANCELLED",
+            )
         else:
-            result = self.registry.call(call, self.ctx)
+            executor = self.tool_executor or self.registry.call
+            result = executor(call, self.ctx)
             result.output = truncate_middle(result.output, self.config.max_tool_chars)
         self.tracer.emit(
             "tool_result",
@@ -299,7 +361,20 @@ class Agent:
             duration_ms=round(result.duration_ms, 1),
         )
         self.hooks.run_after(call, result, self.ctx)
-        self._emit({"type": "tool_result", "tool": call.name, "ok": result.ok, "denied": result.denied, "output": result.output[:500]})
+        self._emit(
+            {
+                "type": "tool_result",
+                "tool": call.name,
+                "call_id": call.id,
+                "ok": result.ok,
+                "denied": result.denied,
+                "error_code": result.error_code,
+                "error": result.error,
+                "output": result.output,
+                "content": result.to_message()["content"],
+                "duration_ms": round(result.duration_ms, 1),
+            }
+        )
         return result
 
     def _resolve_ask(self, call: ToolCall, decision: Decision) -> Decision:
@@ -409,6 +484,8 @@ class Agent:
             approver=self.approver,
             name=f"{self.name}/sub",
             depth=self.depth + 1,
+            cancel_event=self.cancel_event,
+            sandbox=self.sandbox,
         )
         if tools:
             child.ctx.extra["allowed"] = list(tools)

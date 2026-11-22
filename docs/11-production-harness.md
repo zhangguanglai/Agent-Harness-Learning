@@ -3,6 +3,8 @@
 > 前置：[09 安全与组织落地](09-security-and-org.md)、[08 可观测与成本](08-observability-cost.md)。
 > 本文回答两个问题：**生产级 Harness 该怎么规划**、**基于本仓库的 mini_harness 必须补哪些东西**。
 > 代码对照：[loop.py](../mini_harness/loop.py)、[tools.py](../mini_harness/tools.py)、[policy.py](../mini_harness/policy.py)。
+>
+> 其中 Phase 0 的六个 PR 已实现为可运行骨架，见 [12 运行时骨架](12-runtime-skeleton.md)。
 
 ## 0. 先定义「生产级」，否则会做成一个更大的玩具
 

@@ -8,14 +8,15 @@ venv/
 .mini/
 .mini-demo/
 labs/_tmp/
+bench/_work/
+bench/*.json
+
+# æœ¬åœ°æ¨é€å¯†é’¥ï¼ˆä¸å…¥åº“ï¼‰
+.ssh-local/
+.git-keys/
+*.pub
 
 # ç¼–è¾‘å™¨
 .vscode/
 .idea/
 .DS_Store
-
-# ±¾µØÍÆËÍÃÜÔ¿£¨²»Èë¿â£©
-.ssh-local/
-.git-keys/
-*.pub
-

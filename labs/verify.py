@@ -64,6 +64,17 @@ def main(argv: list[str]) -> int:
         print("❌ FAIL  demo（python -m mini_harness demo）")
         failures.append(("demo", (stderr or stdout).strip()[-1500:]))
 
+    # 任务级门禁：bench
+    ok, stdout, stderr = run_cmd(["bench/run.py", "--min-pass-rate", "0.8"])
+    bench_ok = ok and "通过率" in stdout
+    print()
+    if bench_ok:
+        line = next((ln for ln in stdout.splitlines() if "通过率" in ln), "")
+        print(f"✅ PASS  bench（{line.strip()}）")
+    else:
+        print("❌ FAIL  bench（python bench/run.py）")
+        failures.append(("bench", (stderr or stdout).strip()[-1500:]))
+
     print("=" * 64)
     if failures:
         for name, detail in failures:

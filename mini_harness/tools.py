@@ -11,8 +11,6 @@
 
 from __future__ import annotations
 
-import os
-import subprocess
 import time
 import urllib.error
 import urllib.request
@@ -20,6 +18,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
+from .errors import TimeoutToolError, ToolError
+from .sandbox import LocalSandbox, SandboxLimits
 from .types import ToolCall, ToolResult
 from .util import truncate_middle
 
@@ -115,13 +115,32 @@ class ToolRegistry:
                 error=f"没有名为 {call.name!r} 的工具。可用工具: {', '.join(sorted(self._tools))}",
             )
         if "__parse_error__" in call.arguments:
-            return ToolResult(name=call.name, call_id=call.id, ok=False, error=str(call.arguments["__parse_error__"]))
+            return ToolResult(
+                name=call.name,
+                call_id=call.id,
+                ok=False,
+                error=str(call.arguments["__parse_error__"]),
+                error_code="BAD_ARGUMENTS",
+                meta={"hint": "arguments 不是合法 JSON；请重新生成符合 schema 的参数。"},
+            )
         t0 = time.perf_counter()
         try:
             output = tool.handler(call.arguments, ctx)
             ok, error = True, ""
         except Exception as exc:  # noqa: BLE001 —— 故意兜底，错误要变成对话内容
-            output, ok, error = "", False, f"{type(exc).__name__}: {exc}"
+            from .errors import classify
+
+            code, retryable, hint = classify(exc)
+            return ToolResult(
+                name=call.name,
+                call_id=call.id,
+                ok=False,
+                error=f"{type(exc).__name__}: {exc}",
+                duration_ms=(time.perf_counter() - t0) * 1000.0,
+                error_code=code,
+                retryable=retryable,
+                meta={"hint": hint} if hint else {},
+            )
         return ToolResult(
             name=call.name,
             call_id=call.id,
@@ -289,24 +308,28 @@ def build_core_registry() -> ToolRegistry:
         if not command:
             raise ValueError("command 不能为空")
         timeout = max(1.0, min(600.0, float(args.get("timeout") or 120)))
-        shell = os.environ.get("COMSPEC") if os.name == "nt" else "/bin/sh"
-        proc = subprocess.run(
+        sandbox = ctx.extra.get("sandbox") or LocalSandbox()
+        result = sandbox.exec(
             command,
-            shell=True,
-            cwd=str(ctx.workspace),
-            executable=shell,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=timeout,
+            cwd=Path(ctx.workspace),
+            limits=SandboxLimits(timeout_s=timeout),
+            cancel_event=ctx.extra.get("cancel_event"),
         )
-        parts = [f"exit_code={proc.returncode}"]
-        if proc.stdout.strip():
-            parts.append("stdout:\n" + proc.stdout.rstrip())
-        if proc.stderr.strip():
-            parts.append("stderr:\n" + proc.stderr.rstrip())
-        if proc.returncode != 0:
+        if result.cancelled:
+            raise ToolError("命令因任务取消而终止", code="CANCELLED", hint="任务已被取消，不要再重试。")
+        if result.timed_out:
+            raise TimeoutToolError(
+                f"命令超时（>{timeout:.0f}s），进程组已被终止",
+                hint="缩小命令范围；确实需要长时间运行请改用后台任务。",
+            )
+        parts = [f"exit_code={result.exit_code}"]
+        if result.stdout.strip():
+            parts.append("stdout:\n" + result.stdout.rstrip())
+        if result.stderr.strip():
+            parts.append("stderr:\n" + result.stderr.rstrip())
+        if result.truncated:
+            parts.append("（输出过长，已保留末尾部分）")
+        if result.exit_code != 0:
             # 不抛异常：让模型自己读报错并决定下一步，是「失败可恢复」的关键
             parts.append("（命令以非零码退出，修复后重试）")
         return "\n".join(parts)

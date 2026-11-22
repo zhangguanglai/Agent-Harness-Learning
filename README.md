@@ -18,8 +18,11 @@
 # 1. 看一次完整的多轮工具循环（离线，4 轮）
 python -m mini_harness demo
 
-# 2. 一键验收全部机制
+# 2. 一键验收全部机制（9 个实验 + demo + bench 门禁）
 python labs/verify.py
+
+# 3. 任务级评测（CI 可用）
+python bench/run.py --min-pass-rate 0.8
 ```
 
 `demo` 会：列目录 → 读 README → 写 NOTES.md → 收尾，并把完整轨迹落到
@@ -39,9 +42,11 @@ python -m mini_harness run "给 README 加一节快速开始" \
 .
 ├── README.md                    # 本文件：路线、映射、取舍
 ├── AGENTS.md                    # 项目约定（会被注入 Agent 的 system 提示，用于演示）
-├── mini_harness/                # 极简 Harness 实现（~1600 行，纯标准库）
-│   ├── loop.py                  #   代理循环、停止条件、提示组装、子代理
-│   ├── tools.py                 #   工具注册表 + 6 个内置工具 + 沙箱路径解析
+├── mini_harness/                # 教学内核（循环、工具、权限、上下文、记忆）
+│   ├── loop.py                  #   代理循环、停止条件、提示组装、子代理、取消
+│   ├── tools.py                 #   工具注册表 + 6 个内置工具 + 路径沙箱
+│   ├── sandbox.py               #   进程沙箱：进程组 / Job Object、超时、取消、env 过滤
+│   ├── errors.py                #   工具错误分类（可重试 / 拒绝 / 超时）
 │   ├── policy.py                #   模式 / 规则 / 沙箱 / 灾难命令黑名单
 │   ├── context.py               #   预算、截断、压缩、配对清洗
 │   ├── memory.py                #   SOUL/MEMORY/USER + 冻结快照
@@ -51,13 +56,21 @@ python -m mini_harness run "给 README 加一节快速开始" \
 │   ├── trace.py                 #   JSONL 轨迹 + token 账本
 │   ├── llm.py                   #   脚本模型 / 演示模型 / OpenAI 兼容客户端
 │   └── cli.py                   #   demo / run / repl
-├── labs/                        # 7 个实验 + verify.py
-├── docs/                        # 10 篇分层专题
-│   └── appendix/                # 18 册章节精读（对应站点 60+ 章）
+├── runtime/                     # Phase 0 生产外壳（事件溯源 / 网关 / 审批 / 多租户）
+│   ├── runtime.py               #   Runtime / RunHandle / 状态机 / 取消
+│   ├── store.py                 #   事件存储（内存 / SQLite）+ 消息投影
+│   ├── events.py                #   事件模型
+│   ├── gateway.py               #   工具网关：受控重试、错误码统计
+│   ├── policy.py                #   租户 / 用户 / 角色能力
+│   └── approvals.py             #   审批状态机（waiting_approval）
+├── bench/                       # 任务级评测（6 个任务 + CI 门禁）
+├── labs/                        # 9 个机制实验 + verify.py
+├── docs/                        # 12 篇分层专题
+│   └── appendix/                # 18 册章节精读（对应站点 62 篇）
 └── skills/                      # 两个示例 Skill（渐进披露的素材）
 ```
 
-## 读什么：十一个分层文档
+## 读什么：十二个分层文档
 
 | 文档 | 主题 | 一句话 |
 | --- | --- | --- |
@@ -73,6 +86,7 @@ python -m mini_harness run "给 README 加一节快速开始" \
 | [09](docs/09-security-and-org.md) | 安全与组织 | 威胁模型、落地四阶段、心智迁移 |
 | [10](docs/10-learning-path.md) | 学习路径 | 四周路线 + 40 题自测 + 总映射 |
 | [11](docs/11-production-harness.md) | 生产化 | 从教学实现到生产 Harness 的规划、架构与必做扩展 |
+| [12](docs/12-runtime-skeleton.md) | 运行时骨架 | Phase 0 六个 PR 的落地：事件溯源、网关、审批、沙箱、bench |
 
 ## 章节 → 笔记 映射
 
@@ -106,6 +120,11 @@ python -m mini_harness run "给 README 加一节快速开始" \
 | [lab05](labs/lab05_skills.py) | Skill 渐进披露 | 索引无正文、自沉淀生效 |
 | [lab06](labs/lab06_subagent.py) | 子代理隔离 | 父上下文无子步骤 |
 | [lab07](labs/lab07_trace_cost.py) | 轨迹与账本 | seq 连续、账本一致、可归因 |
+| [lab08](labs/lab08_runtime.py) | 运行时骨架 | 事件溯源、崩溃后重建、取消穿透进程组 |
+| [lab09](labs/lab09_gateway_policy.py) | 网关与治理 | 只读重试、写操作不重试、审批留痕、角色拒绝 |
+
+任务级评测：[bench/](bench/) 6 个任务（读改文件、超时、越界、审批、角色），
+`python bench/run.py --min-pass-rate 0.8` 可直接作 CI 门禁。
 
 单独运行：`python labs/lab03_context.py`；全部：`python labs/verify.py`。
 
@@ -123,8 +142,12 @@ python -m mini_harness run "给 README 加一节快速开始" \
 | 压缩 | 有损折叠 + 配对清洗 | 简单、可预测、不依赖第二次模型调用 |
 
 **没有实现**（刻意留白，避免教程变成半成品框架）：向量检索、真实 MCP 客户端、
-多平台 Gateway、图形界面、分布式执行。这些在 `docs/appendix/` 里有机制说明，
+多平台 Gateway、图形界面、分布式执行、容器级沙箱。这些在 `docs/appendix/` 里有机制说明，
 需要时按 [10 学习路径](docs/10-learning-path.md) 的练习自行扩展。
+
+`runtime/` 是 [11 生产化](docs/11-production-harness.md) 里 Phase 0 的**可运行骨架**
+（事件溯源、网关、审批、角色、bench），细节与已知限制见 [12](docs/12-runtime-skeleton.md)；
+它仍然不是生产实现——缺容器隔离、队列、HTTP API、配额与版本化。
 
 ## 常见问题
 
@@ -138,7 +161,9 @@ A：它们是**测试替身**。Harness 的正确性（停止条件、权限、�
 
 **Q：`mini_harness` 能用于生产吗？**
 A：不能。它是教学实现：没有 OS 级沙箱、没有并发会话管理、没有重试与限流、
-没有多平台适配。生产请用成熟 Harness，或至少补上 `docs/09` 清单里的项。
+没有多平台适配。仓库里的 [`runtime/`](runtime/) 已经把其中几项做成了可运行骨架
+（事件溯源、取消、工具网关、审批状态机、角色权限、bench 门禁），但仍缺容器隔离、
+队列、HTTP API 与配额。生产请用成熟 Harness，或按 [11 生产化](docs/11-production-harness.md) 的路线补齐。
 
 **Q：Windows 下中文/emoji 报编码错？**
 A：CLI 与 labs 已把输出切到 UTF-8。若仍异常，先执行 `chcp 65001`。

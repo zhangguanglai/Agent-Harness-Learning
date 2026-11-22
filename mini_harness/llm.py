@@ -71,6 +71,9 @@ class ScriptedLLM:
         resp = step(messages, tools) if callable(step) else step
         if not isinstance(resp, LLMResponse):
             raise LLMError(f"剧本第 {self.cursor} 步返回了 {type(resp)!r}，应为 LLMResponse")
+        # 给每次调用分配稳定且唯一的 id：真实 provider 要求同一会话内 id 可配对
+        for index, tool_call in enumerate(resp.tool_calls):
+            tool_call.id = f"call_{self.cursor}_{index}"
         if resp.usage.total == 0:
             resp.usage = Usage(
                 input_tokens=estimate_messages_tokens(messages),

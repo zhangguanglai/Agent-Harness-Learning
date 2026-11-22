@@ -6,11 +6,22 @@
 """
 
 from .context import CompactionReport, ContextManager
+from .errors import (
+    DeniedToolError,
+    FatalToolError,
+    NotFoundToolError,
+    RateLimitToolError,
+    RetryableToolError,
+    TimeoutToolError,
+    ToolError,
+    classify,
+)
 from .hooks import Hooks, secret_guard
 from .llm import DemoLLM, LLMError, OpenAICompatLLM, ScriptedLLM, call, calls, reply
 from .loop import Agent, AgentConfig, RunResult
 from .memory import MemoryStore
 from .policy import Decision, Mode, PermissionPolicy
+from .sandbox import ExecResult, LocalSandbox, Sandbox, SandboxLimits, sanitize_env
 from .skills import Skill, SkillManager
 from .tools import Tool, ToolContext, ToolRegistry, build_core_registry
 from .trace import Tracer, load_trace
@@ -30,6 +41,19 @@ __all__ = [
     "ToolContext",
     "ToolRegistry",
     "build_core_registry",
+    "ToolError",
+    "RetryableToolError",
+    "TimeoutToolError",
+    "FatalToolError",
+    "DeniedToolError",
+    "NotFoundToolError",
+    "RateLimitToolError",
+    "classify",
+    "Sandbox",
+    "LocalSandbox",
+    "SandboxLimits",
+    "ExecResult",
+    "sanitize_env",
     "Mode",
     "Decision",
     "PermissionPolicy",

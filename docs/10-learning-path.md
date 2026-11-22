@@ -85,6 +85,8 @@
 | 技能渐进披露 | `skills.SkillManager` | lab05 | 索引无正文 |
 | 子代理隔离 | `loop.Agent.delegate_run` | lab06 | 父上下文无子步骤 |
 | 轨迹与账本 | `trace.Tracer` | lab07 | 轨迹 token == 账本 |
+| 事件溯源 / 取消 | `runtime.Runtime` | lab08 | 崩溃后重建、取消穿透 |
+| 工具网关 / 审批 / 角色 | `runtime.ToolGateway` / `ApprovalBroker` | lab09 | 只读重试、审批留痕 |
 
 ## 4. 自测总表（40 题）
 
