@@ -11,6 +11,10 @@ labs/_tmp/
 bench/_work/
 bench/*.json
 
+# Node
+node_modules/
+spike/**/probe-frames.jsonl
+
 # 本地推送密钥（不入库）
 .ssh-local/
 .git-keys/

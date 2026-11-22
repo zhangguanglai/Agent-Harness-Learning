@@ -1,0 +1,17 @@
+{
+  "name": "@harness-spike/dsh-worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "S0 spike: HTTP worker that drives a DeepSeek Harness SDK runtime over NDJSON JSON-RPC",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node test/worker.test.js && node test/spawn.test.js",
+    "test:loopback": "node test/worker.test.js",
+    "test:spawn": "node test/spawn.test.js",
+    "probe": "node probe.js"
+  }
+}

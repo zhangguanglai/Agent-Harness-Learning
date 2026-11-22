@@ -72,6 +72,7 @@ python -m mini_harness run "给 README 加一节快速开始" \
 │   ├── client.py                #   Python 客户端
 │   └── __main__.py              #   python -m api
 ├── bench/                       # 任务级评测（6 个任务 + CI 门禁）
+├── spike/                       # S0 验证件（DSH worker：HTTP ↔ SDK 适配）
 ├── labs/                        # 10 个机制实验 + verify.py
 ├── docs/                        # 12 篇分层专题
 │   └── appendix/                # 18 册章节精读（对应站点 62 篇）
