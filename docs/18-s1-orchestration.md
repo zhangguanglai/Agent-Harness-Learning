@@ -81,21 +81,51 @@ GET  /healthz
 
 ## 7. 与 worker（DSH）的关系
 
-当前 S1 用的是**确定性 Agent**：直接调用 `domain.banking_a` 的工具完成评估。
-这是刻意的——先把「审批 + 事件 + 产物」跑通，再接模型。
+编排层支持两种执行模式，用 `--worker-url` 切换：
 
-接 [spike/dsh-worker](../spike/dsh-worker/README.md) 时只需替换一个执行器：
+| 模式 | 谁执行 agent 阶段 | 用途 |
+| --- | --- | --- |
+| 本地确定性（默认） | 直接调 `domain.banking_a` 工具 | 评测、演示、离线可复现 |
+| worker 模式 | `spike/dsh-worker` 驱动的 DSH 运行时 | 接真实模型与 MCP 工具 |
+
+链路：
 
 ```
-Orchestrator ──submit──▶ worker /v1/runs（task = 评估指令 + case_id）
-     ▲                        │
-     └──── SSE 事件回传 ◀──────┘
-     ▲                        │
-     └── worker 的 approval_url ┘（指向 /v1/assessments/{id}/approve）
+Orchestrator ──POST /v1/runs──▶ worker ──(DSH/loopback)──▶ 事件流
+      ▲                            │
+      └──── SSE 事件回传 ◀──────────┘
+      ▲                            │
+      └── approval_url ────────────┘   worker 的工具审批回调 /v1/worker-approvals
 ```
 
-契约不变：worker 的 `run.succeeded` 映射为 `assessment.completed`，
-`approval.requested` 映射为 `waiting_approval`。
+事件映射：
+
+| worker 事件 | 编排事件 |
+| --- | --- |
+| `run.started` | `agent.submitted` 之后逐条落 `agent.event` |
+| `approval.requested` | `approval.requested`（action=`agent_tool:<tool>`，可配置 auto/wait） |
+| `run.succeeded` | `agent.completed` |
+| `run.failed` / `run.cancelled` | `agent.failed` → run 失败 |
+
+试一下（离线，不接模型）：
+
+```bash
+# 终端 A：worker（loopback，不 spawn、不需要 API Key）
+cd spike/dsh-worker && DSH_BACKEND=loopback PORT=8080 node src/server.js
+
+# 终端 B：编排（worker 内部工具审批自动放行；domain 审批仍走人工）
+python -m orchestrator --port 8081 --worker-url http://127.0.0.1:8080
+
+# 若希望 worker 的工具审批也走人工闸门：
+python -m orchestrator --port 8081 --worker-url http://127.0.0.1:8080 --worker-approval wait
+```
+
+验收见 [lab14](../labs/lab14_worker_integration.py)：auto 模式下 CASE-04 经 worker 执行
+（8 条 worker 事件回灌）+ domain 审批后完成；wait 模式下 CASE-01 的 worker 工具审批
+被人工批准后才继续。
+
+**边界**：worker 只负责「agent 做了什么」，评估结论仍由领域工具链产出——
+这样换模型、换 worker 实现都不影响合规判定与审计口径。
 
 ## 8. 已知限制
 

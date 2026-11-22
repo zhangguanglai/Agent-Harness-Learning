@@ -4,6 +4,9 @@
 1. 事件只追加，状态是投影；
 2. 审批是一等状态（waiting_approval），不是阻塞在某个回调里；
 3. 产物版本化，审批通过才标 final。
+
+并发：单个连接 + 一把锁。SQLite 的 `check_same_thread=False` 只解决「跨线程可用」，
+不解决「并发使用同一游标」，所以每个读写都必须串行。
 """
 
 from __future__ import annotations
@@ -58,7 +61,7 @@ class Store:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self.artifacts_dir = Path(artifacts_dir)
         self.artifacts_dir.mkdir(parents=True, exist_ok=True)
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
         self._conn.executescript(SCHEMA)
         self._conn.commit()
@@ -75,10 +78,11 @@ class Store:
         return run
 
     def get_run(self, run_id: str) -> Run | None:
-        row = self._conn.execute(
-            "SELECT id, case_id, tenant, status, created_at, finished_at, decision, error FROM runs WHERE id = ?",
-            (run_id,),
-        ).fetchone()
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT id, case_id, tenant, status, created_at, finished_at, decision, error FROM runs WHERE id = ?",
+                (run_id,),
+            ).fetchone()
         if not row:
             return None
         return Run(
@@ -95,6 +99,11 @@ class Store:
             )
             self._conn.commit()
 
+    def recent_runs(self, limit: int = 100) -> list[str]:
+        with self._lock:
+            rows = self._conn.execute("SELECT id FROM runs ORDER BY created_at DESC LIMIT ?", (limit,)).fetchall()
+        return [row[0] for row in rows]
+
     # -- events ------------------------------------------------------------ #
     def append_event(self, run_id: str, event_type: str, payload: dict) -> dict:
         with self._lock:
@@ -108,10 +117,11 @@ class Store:
         return event
 
     def events(self, run_id: str, after: int = 0) -> list[dict]:
-        rows = self._conn.execute(
-            "SELECT run_id, seq, type, ts, payload FROM events WHERE run_id = ? AND seq > ? ORDER BY seq",
-            (run_id, after),
-        ).fetchall()
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT run_id, seq, type, ts, payload FROM events WHERE run_id = ? AND seq > ? ORDER BY seq",
+                (run_id, after),
+            ).fetchall()
         return [
             {"run_id": r[0], "seq": r[1], "type": r[2], "ts": r[3], "payload": json.loads(r[4])} for r in rows
         ]
@@ -141,10 +151,11 @@ class Store:
         return {"id": row[0], "run_id": row[1], "action": row[2], "status": status, "by": by, "comment": comment}
 
     def pending_approval(self, run_id: str) -> dict | None:
-        row = self._conn.execute(
-            "SELECT id, run_id, action, status FROM approvals WHERE run_id = ? AND status = 'pending' ORDER BY requested_at DESC LIMIT 1",
-            (run_id,),
-        ).fetchone()
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT id, run_id, action, status FROM approvals WHERE run_id = ? AND status = 'pending' ORDER BY requested_at DESC LIMIT 1",
+                (run_id,),
+            ).fetchone()
         return {"id": row[0], "run_id": row[1], "action": row[2], "status": row[3]} if row else None
 
     # -- artifacts --------------------------------------------------------- #
@@ -154,17 +165,17 @@ class Store:
         path = run_dir / filename
         path.write_text(content, encoding="utf-8")
         digest = hashlib.sha256(content.encode("utf-8")).hexdigest()
-        version = self._conn.execute("SELECT COALESCE(MAX(version), 0) + 1 FROM artifacts WHERE run_id = ?", (run_id,)).fetchone()[0]
-        artifact = {
-            "id": f"art_{uuid.uuid4().hex[:10]}",
-            "run_id": run_id,
-            "version": version,
-            "path": str(path),
-            "sha256": digest,
-            "status": status,
-            "created_at": time.time(),
-        }
         with self._lock:
+            version = self._conn.execute("SELECT COALESCE(MAX(version), 0) + 1 FROM artifacts WHERE run_id = ?", (run_id,)).fetchone()[0]
+            artifact = {
+                "id": f"art_{uuid.uuid4().hex[:10]}",
+                "run_id": run_id,
+                "version": version,
+                "path": str(path),
+                "sha256": digest,
+                "status": status,
+                "created_at": time.time(),
+            }
             self._conn.execute(
                 "INSERT INTO artifacts (id, run_id, version, path, sha256, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
                 (artifact["id"], run_id, version, artifact["path"], digest, status, artifact["created_at"]),
@@ -173,14 +184,16 @@ class Store:
         return artifact
 
     def artifacts(self, run_id: str) -> list[dict]:
-        rows = self._conn.execute(
-            "SELECT id, run_id, version, path, sha256, status, created_at FROM artifacts WHERE run_id = ? ORDER BY version",
-            (run_id,),
-        ).fetchall()
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT id, run_id, version, path, sha256, status, created_at FROM artifacts WHERE run_id = ? ORDER BY version",
+                (run_id,),
+            ).fetchall()
         return [
             {"id": r[0], "run_id": r[1], "version": r[2], "path": r[3], "sha256": r[4], "status": r[5], "created_at": r[6]}
             for r in rows
         ]
 
     def close(self) -> None:
-        self._conn.close()
+        with self._lock:
+            self._conn.close()

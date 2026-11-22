@@ -143,6 +143,7 @@ python -m mini_harness run "给 README 加一节快速开始" \
 | [lab11](labs/lab11_domain_a.py) | 场景 A 工具链 | 20 条评测、MCP 协议、引用校验、注入样本 |
 | [lab12](labs/lab12_dsh_bundle.py) | 领域 bundle | 清单 / MCP 工具面 / DSH 组合三层校验 |
 | [lab13](labs/lab13_orchestrator.py) | S1 编排 | 免审批、审批留痕、拒绝、SSE、引用 |
+| [lab14](labs/lab14_worker_integration.py) | 编排 × worker | worker 事件回灌、审批 auto/wait 两种策略 |
 
 任务级评测：[bench/](bench/) 6 个任务（读改文件、超时、越界、审批、角色），
 `python bench/run.py --min-pass-rate 0.8` 可直接作 CI 门禁。

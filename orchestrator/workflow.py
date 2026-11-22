@@ -93,7 +93,13 @@ class AssessmentWorkflow:
         self.rulesets = {name: RuleSet.load(rules_dir / f"{name}.json") for name in ("v1", "v2")}
         self.approval_timeout_s = approval_timeout_s
 
-    def run(self, run_id: str, case_id: str, *, wait_approval: Callable[[str], tuple[bool, str, str]]) -> None:
+    def run(
+        self,
+        run_id: str,
+        case_id: str,
+        *,
+        request_approval: Callable[[str, str, dict], tuple[bool, str, str]],
+    ) -> None:
         store = self.store
         store.append_event(run_id, "assessment.started", {"case_id": case_id})
 
@@ -140,20 +146,8 @@ class AssessmentWorkflow:
             store.append_event(run_id, "assessment.completed", {"path": decision.path, "auto": True})
             return
 
-        approval = store.create_approval(run_id, action="submit_assessment")
-        store.set_status(run_id, "waiting_approval")
-        store.append_event(
-            run_id,
-            "approval.requested",
-            {"approval_id": approval["id"], "action": approval["action"], "path": decision.path},
-        )
-
-        approved, by, comment = wait_approval(run_id)
-        store.append_event(
-            run_id,
-            "approval.resolved",
-            {"approval_id": approval["id"], "approved": approved, "by": by, "comment": comment},
-        )
+        # 审批记录、状态切换与事件都由编排层统一处理（worker 审批也走同一个闸门）
+        approved, by, comment = request_approval(run_id, "submit_assessment", {"path": decision.path})
 
         if not approved:
             store.set_status(run_id, "rejected", decision=decision.to_dict())
