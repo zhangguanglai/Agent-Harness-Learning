@@ -73,6 +73,7 @@ python -m mini_harness run "给 README 加一节快速开始" \
 │   └── __main__.py              #   python -m api
 ├── bench/                       # 任务级评测（6 个任务 + CI 门禁）
 ├── domain/                      # 领域包：banking_a（跨境数据出境评估，含 MCP 工具与评测）
+├── orchestrator/                # S1 编排：run 状态机 / 审批闸门 / 产物版本 / SSE
 ├── spike/                       # S0 验证件（DSH worker：HTTP ↔ SDK 适配）
 ├── labs/                        # 10 个机制实验 + verify.py
 ├── docs/                        # 12 篇分层专题
@@ -80,7 +81,7 @@ python -m mini_harness run "给 README 加一节快速开始" \
 └── skills/                      # 两个示例 Skill（渐进披露的素材）
 ```
 
-## 读什么：十七个分层文档
+## 读什么：十八个分层文档
 
 | 文档 | 主题 | 一句话 |
 | --- | --- | --- |
@@ -102,6 +103,7 @@ python -m mini_harness run "给 README 加一节快速开始" \
 | [15](docs/15-option-c-technical-design.md) | 方案 C 设计 | 垂直领域工作台：控制面、worker 协议、事件契约、审批与多租户 |
 | [16](docs/16-implementation-plan.md) | 实施方案 | S0–S3 里程碑、团队分工、测试策略、预算与验收 |
 | [17](docs/17-banking-gba-scenarios.md) | 银行场景 | 大湾区实验室的 5 个候选场景、评分、MVP 任务样例与评测集 |
+| [18](docs/18-s1-orchestration.md) | S1 编排 | 提交 → 评估 → 审批 → 定稿 的状态机、接口与产物版本 |
 
 ## 章节 → 笔记 映射
 
@@ -138,6 +140,9 @@ python -m mini_harness run "给 README 加一节快速开始" \
 | [lab08](labs/lab08_runtime.py) | 运行时骨架 | 事件溯源、崩溃后重建、取消穿透进程组 |
 | [lab09](labs/lab09_gateway_policy.py) | 网关与治理 | 只读重试、写操作不重试、审批留痕、角色拒绝 |
 | [lab10](labs/lab10_http_api.py) | HTTP API | 401、SSE 收尾、取消、审批、跨租户 404、限流 |
+| [lab11](labs/lab11_domain_a.py) | 场景 A 工具链 | 20 条评测、MCP 协议、引用校验、注入样本 |
+| [lab12](labs/lab12_dsh_bundle.py) | 领域 bundle | 清单 / MCP 工具面 / DSH 组合三层校验 |
+| [lab13](labs/lab13_orchestrator.py) | S1 编排 | 免审批、审批留痕、拒绝、SSE、引用 |
 
 任务级评测：[bench/](bench/) 6 个任务（读改文件、超时、越界、审批、角色），
 `python bench/run.py --min-pass-rate 0.8` 可直接作 CI 门禁。
