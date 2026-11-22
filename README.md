@@ -142,6 +142,29 @@ A：不能。它是教学实现：没有 OS 级沙箱、没有并发会话管理
 **Q：Windows 下中文/emoji 报编码错？**
 A：CLI 与 labs 已把输出切到 UTF-8。若仍异常，先执行 `chcp 65001`。
 
+**Q：在受限沙箱（DSH / Codex 等）里 `git push` 报 `sh.exe: couldn't create signal pipe, Win32 error 5`？**
+A：Git for Windows 自带的 `ssh.exe` 与 `sh.exe` 是 cygwin 程序，沙箱不允许它们创建命名管道；
+而 `core.sshCommand` / `GIT_SSH_COMMAND` 又会被 `sh -c` 包一层，同样走不通。改用 Windows 自带的原生 OpenSSH：
+
+```powershell
+$env:GIT_SSH='C:\Windows\System32\OpenSSH\ssh.exe'
+git push
+```
+
+并在 `~/.ssh/config` 里为 GitHub 指定密钥（本仓库作者本机的配置）：
+
+```
+Host github.com
+  HostName github.com
+  User git
+  IdentityFile ~/.ssh/id_ed25519_agent_harness
+  IdentitiesOnly yes
+  UpdateHostKeys no   # 沙箱里无法改写 known_hosts，关掉轮换以免告警
+```
+
+`setx GIT_SSH "C:\Windows\System32\OpenSSH\ssh.exe"` 可让新开的终端永久生效。
+另外两条路：改用 HTTPS + PAT（完全不碰 ssh），或干脆在沙箱外的普通终端推送。
+
 ## 来源与声明
 
 - 笔记与对照基于 [智能体漫游](https://agent.jeffjade.com/)（Claude Code / Hermes Agent 专题），
