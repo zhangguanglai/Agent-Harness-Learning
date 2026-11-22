@@ -78,7 +78,7 @@ python -m mini_harness run "给 README 加一节快速开始" \
 └── skills/                      # 两个示例 Skill（渐进披露的素材）
 ```
 
-## 读什么：十三个分层文档
+## 读什么：十四个分层文档
 
 | 文档 | 主题 | 一句话 |
 | --- | --- | --- |
@@ -96,6 +96,7 @@ python -m mini_harness run "给 README 加一节快速开始" \
 | [11](docs/11-production-harness.md) | 生产化 | 从教学实现到生产 Harness 的规划、架构与必做扩展 |
 | [12](docs/12-runtime-skeleton.md) | 运行时骨架 | Phase 0 六个 PR 的落地：事件溯源、网关、审批、沙箱、bench |
 | [13](docs/13-http-api.md) | HTTP API | 鉴权、租户隔离、SSE 事件流、取消与审批的控制面 |
+| [14](docs/14-harness-platform-selection.md) | 平台选型 | 自研 / DSH 底座 / 其他开源三条路线的加权评估与架构方案 |
 
 ## 章节 → 笔记 映射
 
