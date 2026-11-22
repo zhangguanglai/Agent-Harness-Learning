@@ -57,7 +57,7 @@ python -m mini_harness run "给 README 加一节快速开始" \
 └── skills/                      # 两个示例 Skill（渐进披露的素材）
 ```
 
-## 读什么：十个分层文档
+## 读什么：十一个分层文档
 
 | 文档 | 主题 | 一句话 |
 | --- | --- | --- |
@@ -72,6 +72,7 @@ python -m mini_harness run "给 README 加一节快速开始" \
 | [08](docs/08-observability-cost.md) | 可观测与成本 | 先看见，再优化 |
 | [09](docs/09-security-and-org.md) | 安全与组织 | 威胁模型、落地四阶段、心智迁移 |
 | [10](docs/10-learning-path.md) | 学习路径 | 四周路线 + 40 题自测 + 总映射 |
+| [11](docs/11-production-harness.md) | 生产化 | 从教学实现到生产 Harness 的规划、架构与必做扩展 |
 
 ## 章节 → 笔记 映射
 
