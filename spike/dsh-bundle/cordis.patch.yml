@@ -1,0 +1,37 @@
+# S0-2：banking-a 领域 bundle 的 patch 层
+#
+# 做两件事：
+# 1. 插入一个 MCP 客户端行，把 `python -m domain.banking_a.mcp_server` 的工具
+#    以 `mcp__banking-a__*` 的名字暴露给模型；
+# 2. 覆盖 `permission` 行，定义两个合规预设（逐次确认 / 批量预审）。
+#
+# 注意：patch 是「整行 config 替换」，不是合并；所以 permission 行要写全量配置。
+# 这里的显示文案用英文，中文文案放在 locale/*.json（避免 patch 加载时的编码差异）。
+
+- insert:
+    - id: mcp-banking-a
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: banking-a
+        transport: stdio
+        command: python
+        args: ['-m', 'domain.banking_a.mcp_server']
+        cwd: !!js process.env.BANKING_A_HOME || process.cwd()
+        toolCallTimeoutMs: 30000
+        startupTimeoutMs: 20000
+        failOnStartupError: true
+
+- id: permission
+  config:
+    presets:
+      compliance-review:
+        name: Compliance review (confirm each write)
+        description: Workspace writes need confirmation; external submission still requires human approval.
+        sandbox: workspace-write
+        approval: ask
+      compliance-batch:
+        name: Compliance batch pre-review
+        description: Offline batch pre-review only; never use for production filing.
+        sandbox: workspace-write
+        approval: never
+    defaultPreset: compliance-review

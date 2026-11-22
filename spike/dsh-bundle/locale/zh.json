@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "跨境数据出境评估",
+    "description": "接入 banking-a 的检索、抽取、路径判定三个工具，并提供「逐次确认 / 批量预审」两档合规权限预设。",
+    "detail": "docs/DETAIL.md"
+  }
+}

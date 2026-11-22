@@ -6,7 +6,7 @@ S0 的目标只有一句话：**证明 DSH 可以作为服务端运行时被控�
 | # | 验证项 | 状态 | 产物 |
 | --- | --- | --- | --- |
 | S0-1 | 容器内跑 `dsh-headless` | 待做（需 Docker + Node 24） | — |
-| S0-2 | 自定义 bundle（工具 + 权限预设） | 待做 | — |
+| S0-2 | 自定义 bundle（工具 + 权限预设） | **已完成（组合校验）** | [dsh-bundle](dsh-bundle/) |
 | S0-3 | sidecar 驱动 SDK：submit/events/cancel | **已完成（离线部分）** | [dsh-worker](dsh-worker/) |
 | S0-4 | 审批外置 | **已完成（mock 往返）** | [dsh-worker](dsh-worker/) |
 | S0-5 | OTel 与 token 计量 | 待做 | — |

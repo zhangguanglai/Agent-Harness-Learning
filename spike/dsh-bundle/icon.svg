@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Cross-border review">
+  <path d="M32 6 54 14v18c0 13-9 22-22 26C19 54 10 45 10 32V14L32 6Z" fill="#0f3d5c"/>
+  <path d="M32 12 48 18v14c0 9-6 16-16 20-10-4-16-11-16-20V18l16-6Z" fill="#e8f2f8"/>
+  <path d="M23 24h18v3H23zm0 7h18v3H23zm0 7h12v3H23z" fill="#0f3d5c"/>
+  <circle cx="45" cy="43" r="9" fill="#1f7a4d"/>
+  <path d="m41 43 3 3 5-6" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

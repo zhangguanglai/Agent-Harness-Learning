@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "Cross-border data export review",
+    "description": "Adds the banking-a review tools (regulation search, case extraction, path evaluation) and two compliance permission presets.",
+    "detail": "docs/DETAIL.md"
+  }
+}

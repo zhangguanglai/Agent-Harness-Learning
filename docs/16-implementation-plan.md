@@ -27,7 +27,7 @@ S3                                              ██████████�
 | # | 任务 | 产出 | 验收 |
 | --- | --- | --- | --- |
 | S0-1 | 容器内跑 `dsh-headless` | Dockerfile + 启动脚本 | 禁网容器内完成一次「列目录+写文件」任务 |
-| S0-2 | 写一个 bundle（工具 + 权限预设） | npm 包 | `--dump-config` 能看到自定义工具与 preset |
+| S0-2 | 写一个 bundle（工具 + 权限预设） | npm 包（已完成：[spike/dsh-bundle](../spike/dsh-bundle/README.md)） | `--dump-config` 能看到自定义工具与 preset ✅ |
 | S0-3 | sidecar 驱动 SDK：submit/events/cancel | `dsh-worker` 骨架 | 事件顺序正确，取消 3s 内生效 |
 | S0-4 | 审批外置 | 临时 HTTP 审批桩 | DSH `ask` → 外部批准 → 任务继续 |
 | S0-5 | OTel 与 token 计量 | collector + 面板 | 一次 run 能看到 trace 与 token |
