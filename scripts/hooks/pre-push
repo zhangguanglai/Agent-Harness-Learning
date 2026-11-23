@@ -1,0 +1,5 @@
+#!/bin/sh
+# pre-push：推送前跑快速门禁（labs + worker），失败则阻止推送。
+# 启用：git config core.hooksPath scripts/hooks
+set -e
+exec python scripts/ci.py --fast
