@@ -69,7 +69,8 @@ Docker：可用 29.9.3
 
 ```bash
 python deploy/s0-container/verify.py --static-only   # 只跑静态检查
-python deploy/s0-container/verify.py --build         # 构建 + 运行 + 断言 HELLO.md
+python deploy/s0-container/verify.py --build         # 构建 + 运行 + 断言 HELLO.md（需模型 Key）
+python deploy/s0-container/verify.py --build --no-model   # CI 用：无模型冒烟
 ```
 
 | 退出码 | 含义 |

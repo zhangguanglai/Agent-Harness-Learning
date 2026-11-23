@@ -80,6 +80,29 @@ def build_image(image: str) -> tuple[bool, str]:
     return True, "镜像构建完成"
 
 
+def run_container_smoke(image: str, timeout_s: float = 300) -> tuple[bool, str]:
+    """无模型冒烟：验证镜像内 CLI、headless 入口与 MCP 包可导入。"""
+    script = "dsh --version && dsh headless --help >/dev/null && python -c 'import domain.banking_a; print(\"mcp-import-ok\")'"
+    proc = subprocess.run(
+        [
+            "docker", "run", "--rm",
+            "--read-only", "--tmpfs", "/tmp:rw,exec,size=256m",
+            "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
+            image, "shell", "-lc", script,
+        ],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=timeout_s,
+    )
+    if proc.returncode != 0:
+        return False, (proc.stderr or proc.stdout)[-800:]
+    if "mcp-import-ok" not in proc.stdout:
+        return False, f"未观察到 MCP 导入标记：{proc.stdout[-300:]}"
+    return True, "镜像内 CLI / headless 入口 / MCP 包均可用"
+
+
 def run_headless(image: str, timeout_s: float = 600) -> tuple[bool, str]:
     key = os.environ.get("DEEPSEEK_API_KEY")
     if not key:
@@ -126,6 +149,7 @@ def main() -> int:
     parser.add_argument("--static-only", action="store_true")
     parser.add_argument("--build", action="store_true", help="构建镜像")
     parser.add_argument("--no-build", action="store_true", help="跳过构建，直接用 --image")
+    parser.add_argument("--no-model", action="store_true", help="只做无模型冒烟（CI 默认）")
     parser.add_argument("--image", default=IMAGE)
     args = parser.parse_args()
 
@@ -151,7 +175,7 @@ def main() -> int:
         if not ok:
             return 1
 
-    ok, message = run_headless(image)
+    ok, message = run_container_smoke(image) if args.no_model else run_headless(image)
     print(f"运行：{'PASS' if ok else 'FAIL'} {message}")
     return 0 if ok else 1
 

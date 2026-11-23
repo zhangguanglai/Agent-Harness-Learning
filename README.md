@@ -1,5 +1,7 @@
 # Agent Harness 学习工程
 
+[![CI](https://github.com/zhangguanglai/Agent-Harness-Learning/actions/workflows/ci.yml/badge.svg)](https://github.com/zhangguanglai/Agent-Harness-Learning/actions/workflows/ci.yml)
+
 一套**可运行**的 Agent Harness 学习材料：以 [智能体漫游](https://agent.jeffjade.com/)
 （Claude Code 45 篇 + Hermes Agent 17 篇）为参照，把散落在两套产品里的机制，
 重组为「九个部件」的架构视角，并用一个**零依赖的 Python 极简实现**逐层验证。
@@ -74,6 +76,7 @@ python -m mini_harness run "给 README 加一节快速开始" \
 ├── bench/                       # 任务级评测（6 个任务 + CI 门禁）
 ├── domain/                      # 领域包：banking_a（跨境数据出境评估，含 MCP 工具与评测）
 ├── orchestrator/                # S1 编排：run 状态机 / 审批闸门 / 产物版本 / SSE
+├── .github/workflows/           # CI：labs / worker / container
 ├── deploy/                      # 容器化与 OTel collector
 ├── observability/               # OTLP 追踪（Python，零依赖）
 ├── spike/                       # S0 验证件（DSH worker：HTTP ↔ SDK 适配）
@@ -83,7 +86,7 @@ python -m mini_harness run "给 README 加一节快速开始" \
 └── skills/                      # 两个示例 Skill（渐进披露的素材）
 ```
 
-## 读什么：二十一个分层文档
+## 读什么：二十二个分层文档
 
 | 文档 | 主题 | 一句话 |
 | --- | --- | --- |
@@ -109,6 +112,7 @@ python -m mini_harness run "给 README 加一节快速开始" \
 | [19](docs/19-s0-container.md) | 容器化 | S0-1：镜像分层、安全默认、网络策略与验证矩阵 |
 | [20](docs/20-otel.md) | 追踪 | S0-5：OTLP span 树、traceparent 传播、收集器与实测 |
 | [21](docs/21-s2-auth-tenancy.md) | S2 前奏 | 鉴权、租户隔离、规则版本、产物存储抽象 |
+| [22](docs/22-ci.md) | CI | 三个 job、为什么容器冒烟不带模型 Key、覆盖率与盲区 |
 
 ## 章节 → 笔记 映射
 
