@@ -59,7 +59,13 @@ DSH 跑真实模型时**必须**能访问模型 API。所以 S0-1 的验收不�
 - 本地：先用默认 bridge 验证功能，再套网络策略；
 - 若模型走行内网关，把网关地址加入白名单即可，无需开放公网。
 
-## 验证
+## 验证（已通过）
+
+```
+静态检查：PASS（Dockerfile / entrypoint）
+Docker：可用 29.9.3
+运行：PASS 容器内完成任务（7s），HELLO.md='ok'
+```
 
 ```bash
 python deploy/s0-container/verify.py --static-only   # 只跑静态检查
@@ -68,12 +74,11 @@ python deploy/s0-container/verify.py --build         # 构建 + 运行 + 断言 
 
 | 退出码 | 含义 |
 | --- | --- |
-| 0 | 静态 + 构建 + 容器内任务全部通过 |
+| 0 | 静态 + 构建 + 容器内任务全部通过（本机已通过） |
 | 1 | 失败 |
 | 2 | 跳过（无 Docker daemon 或缺 Key） |
 
-> 当前开发机：Docker CLI 存在但 daemon 未运行（Docker Desktop 的 WSL 引擎不可用），
-> 因此只完成了静态检查；构建与运行需在装有 Docker 的环境执行。
+> 2026-11-23 本机（Docker 29.9.3 / linux x86_64）已跑通：容器内 headless 用时 7s 写出 `HELLO.md=ok`。
 
 ## 已知限制
 
@@ -81,3 +86,12 @@ python deploy/s0-container/verify.py --build         # 构建 + 运行 + 断言 
 - MCP server 依赖容器内 `python3` 与 `/opt/banking-a/domain`（镜像已内置）；
 - `headless` 每次冷启动（无预热池），时延高于常驻 worker；
 - 镜像未做签名与 SBOM，生产需补供应链环节。
+
+## 容器里的四个坑（实测）
+
+1. **只读根 + 可写 DSH_HOME**：DSH 要创建 profile，必须把 `DSH_HOME` 指到 tmpfs（本镜像用 `/tmp/dsh-home`），否则 `mkdir /home/harness/.dsh/...` 报 ENOENT；
+2. **tmpfs 必须带 `exec`**：默认 `size=` 挂载常带 `noexec`，原生模块 dlopen 会报
+   `failed to map segment from shared object`；运行参数用 `--tmpfs /tmp:rw,exec,size=256m`；
+3. **npm 全局安装的 native addon 解析**：`node-addon-require-builtin-*` 被提升到 `dsh/node_modules`，
+   loader 却找主包内路径；镜像里补了平台包软链与 `build/napi/...` 本地构建别名；
+4. **`python` 别名**：MCP server 命令是 `python -m domain...`，Debian 只有 `python3`；镜像加了 `/usr/local/bin/python` 软链。

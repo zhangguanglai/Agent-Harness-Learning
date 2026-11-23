@@ -27,3 +27,6 @@ spike/**/probe-frames.jsonl
 
 # 真实模型冒烟用的临时 DSH_HOME
 spike/.dsh-run/
+
+# 容器演示工作区
+workspace/

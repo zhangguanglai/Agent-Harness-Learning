@@ -1,0 +1,12 @@
+.git
+.gitignore
+**/__pycache__
+**/node_modules
+spike/.dsh-run
+labs/_tmp
+.mini
+.mini-demo
+bench/_work
+bench/*.json
+orchestrator/_data
+deploy/otel/*.jsonl

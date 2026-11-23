@@ -60,7 +60,7 @@ def check_static() -> list[str]:
 def docker_ready() -> tuple[bool, str]:
     if not shutil.which("docker"):
         return False, "未安装 docker CLI"
-    proc = subprocess.run(["docker", "info", "--format", "{{.ServerVersion}}"], capture_output=True, text=True, timeout=30)
+    proc = subprocess.run(["docker", "info", "--format", "{{.ServerVersion}}"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30)
     if proc.returncode != 0:
         return False, "docker daemon 不可用"
     return True, proc.stdout.strip()
@@ -71,6 +71,8 @@ def build_image(image: str) -> tuple[bool, str]:
         ["docker", "build", "-f", str(DIR / "Dockerfile"), "-t", image, str(ROOT)],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         timeout=1800,
     )
     if proc.returncode != 0:
@@ -88,7 +90,7 @@ def run_headless(image: str, timeout_s: float = 600) -> tuple[bool, str]:
         proc = subprocess.run(
             [
                 "docker", "run", "--rm",
-                "--read-only", "--tmpfs", "/tmp:rw,size=64m",
+                "--read-only", "--tmpfs", "/tmp:rw,exec,size=256m",
                 "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
                 "--pids-limit", "256", "--memory", "2g", "--cpus", "2",
                 "-v", f"{workspace}:/workspace",
@@ -98,6 +100,8 @@ def run_headless(image: str, timeout_s: float = 600) -> tuple[bool, str]:
             ],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=timeout_s,
             env={**os.environ, "DEEPSEEK_API_KEY": key},
         )

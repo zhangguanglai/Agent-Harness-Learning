@@ -15,7 +15,8 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
     BANKING_A_HOME=/opt/banking-a \
     PYTHONPATH=/opt/banking-a \
-    DSH_HOME=/home/harness/.dsh \
+    DSH_HOME=/tmp/dsh-home \
+    HOME=/tmp \
     DSH_VERSION=0.2.2-rc.5
 
 RUN apt-get update \
@@ -24,7 +25,17 @@ RUN apt-get update \
  && npm install -g "@deepseek-ai/dsh@${DSH_VERSION}" \
  && npm cache clean --force
 
-RUN useradd --create-home --uid 10001 harness \
+# npm 全局安装会把平台原生的 node-addon-require-builtin-* 提升到 dsh/node_modules，
+# 而 loader 期望它在主包内（或 build/ 下的本地构建产物）。这里补两处软链，
+# 否则 headless 启动时报 "Cannot find module .../require_builtin.node"。
+RUN mkdir -p /usr/local/lib/node_modules/@deepseek-ai/dsh/node_modules/node-addon-require-builtin/build/napi/napi-v9-linux-x64-gnu \
+ && ln -sfn /usr/local/lib/node_modules/@deepseek-ai/dsh/node_modules/node-addon-require-builtin-linux-x64-gnu/prebuilt/linux-x64-gnu-napi-v9.node \
+    /usr/local/lib/node_modules/@deepseek-ai/dsh/node_modules/node-addon-require-builtin/build/napi/napi-v9-linux-x64-gnu/require_builtin.node \
+ && mkdir -p /usr/local/lib/node_modules/@deepseek-ai/dsh/node_modules/node-addon-require-builtin/node_modules \
+ && ln -sfn ../../node-addon-require-builtin-linux-x64-gnu \
+    /usr/local/lib/node_modules/@deepseek-ai/dsh/node_modules/node-addon-require-builtin/node_modules/node-addon-require-builtin-linux-x64-gnu \
+ && ln -sf /usr/bin/python3 /usr/local/bin/python \
+ && useradd --create-home --uid 10001 harness \
  && mkdir -p /opt/banking-a /workspace \
  && chown -R harness:harness /opt/banking-a /workspace
 

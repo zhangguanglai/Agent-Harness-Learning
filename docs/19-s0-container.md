@@ -48,9 +48,9 @@ node:24-bookworm-slim
 | 层 | 检查 | 本机结果 |
 | --- | --- | --- |
 | 静态 | Dockerfile 约束、entrypoint 关键命令 | ✅ PASS |
-| 环境 | docker CLI / daemon | ⚠️ daemon 未运行 |
-| 构建 | `docker build` | ⏸ 待有 Docker 的环境 |
-| 运行 | 容器内完成「列目录 + 写 HELLO.md」 | ⏸ 同上 |
+| 环境 | docker CLI / daemon | ✅ 29.9.3（linux/x86_64） |
+| 构建 | `docker build` | ✅ 镜像 1.9 GB |
+| 运行 | 容器内完成「列目录 + 写 HELLO.md」 | ✅ 7s，HELLO.md=ok |
 
 ```bash
 python deploy/s0-container/verify.py --static-only   # 0
@@ -59,6 +59,13 @@ python deploy/s0-container/verify.py --build         # 有 Docker 时：0 / 1
 ```
 
 `verify.py` 对「跳过」返回 2，而不是 0——避免把「没验证」当成「通过」。
+
+### 实测的四个容器坑
+
+1. 只读根下 DSH 需要可写 `DSH_HOME`（本镜像 `/tmp/dsh-home`）；
+2. tmpfs 必须 `exec`，否则原生模块 dlopen 报 `failed to map segment`；
+3. npm 全局安装的 native addon 需要软链到主包（否则找不到 `require_builtin.node`）；
+4. MCP 的 `python` 命令需要指向 `python3`。
 
 ## 5. 已知限制
 
