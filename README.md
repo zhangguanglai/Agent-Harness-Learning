@@ -29,6 +29,9 @@ python bench/run.py --min-pass-rate 0.8
 # 4. 本地 CI（与 GitHub Actions 同命令；--fast 跳过容器）
 python scripts/ci.py --fast
 
+# 5. 检查 DSH 是否有新版本（只读，不安装）
+python scripts/check_dsh_version.py
+
 # 4. 启动 HTTP API（鉴权 / SSE / 审批 / 租户隔离）
 python -m api --port 8765 --token "dev-token=demo:alice:operator"
 ```
