@@ -83,7 +83,7 @@ python -m orchestrator --dual-approval --approval-sla 14400   # 4 小时
 
 | 项 | 现状 | 下一步 |
 | --- | --- | --- |
-| 对象存储产物 | `ArtifactStore` 协议 + 本地/内存 | 实现 `S3ArtifactStore`（SigV4 PUT + 预签名下载） |
+| 对象存储产物 | `S3ArtifactStore`（SigV4 + 预签名）✅ | 见 [24](24-s3-artifacts.md)；真实 S3/MinIO 集成验证 |
 | OIDC 完整流程 | HS256 共享密钥 | 接 IdP 的 JWKS、RS256、token 刷新 |
 | 计费出账 | usage_ledger 记录 | 按租户出账、预算告警、对账 |
 | 数据隔离 | 逻辑隔离（tenant 过滤） | schema/库级隔离、密钥隔离 |

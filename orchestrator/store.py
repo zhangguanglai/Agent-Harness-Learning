@@ -279,6 +279,17 @@ class Store:
             self._conn.commit()
         return artifact
 
+    def get_artifact(self, artifact_id: str) -> dict | None:
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT id, run_id, version, path, sha256, status, created_at FROM artifacts WHERE id = ?",
+                (artifact_id,),
+            ).fetchone()
+        return (
+            {"id": row[0], "run_id": row[1], "version": row[2], "path": row[3], "sha256": row[4], "status": row[5], "created_at": row[6]}
+            if row else None
+        )
+
     def artifacts(self, run_id: str) -> list[dict]:
         with self._lock:
             rows = self._conn.execute(

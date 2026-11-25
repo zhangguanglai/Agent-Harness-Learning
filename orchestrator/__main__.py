@@ -36,6 +36,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--jwt-issuer", default=None)
     parser.add_argument("--jwt-audience", default=None)
     parser.add_argument("--dual-approval", action="store_true", help="安全评估路径要求两名审批人")
+    parser.add_argument("--s3-endpoint", default=None, help="S3 兼容端点，如 http://127.0.0.1:9000")
+    parser.add_argument("--s3-bucket", default=None, help="产物 bucket；设置后启用 S3 存储")
+    parser.add_argument("--s3-region", default="us-east-1")
+    parser.add_argument("--s3-access-key", default=None)
+    parser.add_argument("--s3-secret-key", default=None)
+    parser.add_argument("--s3-prefix", default="")
     parser.add_argument("--approval-sla", type=float, default=4 * 3600, help="审批 SLA（秒），超时升级")
     parser.add_argument("--quota-concurrent", type=int, default=3)
     parser.add_argument("--quota-daily-runs", type=int, default=200)
@@ -82,6 +88,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"鉴权：{'静态 token（' + str(len(args.token)) + ' 个）' if tokens else '未启用（开发模式）'}")
     print(f"配额：并发 {args.quota_concurrent} / 日运行 {args.quota_daily_runs} / 日 token {args.quota_daily_tokens}")
     print(f"双人审批：{'开启' if args.dual_approval else '关闭'}，SLA {args.approval_sla:.0f}s")
+    print(f"产物存储：{'s3://' + args.s3_bucket if args.s3_bucket else '本地目录'}")
     try:
         server.serve_forever(poll_interval=0.2)
     except KeyboardInterrupt:

@@ -93,7 +93,7 @@ python -m mini_harness run "给 README 加一节快速开始" \
 └── skills/                      # 两个示例 Skill（渐进披露的素材）
 ```
 
-## 读什么：二十三个分层文档
+## 读什么：二十四个分层文档
 
 | 文档 | 主题 | 一句话 |
 | --- | --- | --- |
@@ -121,6 +121,7 @@ python -m mini_harness run "给 README 加一节快速开始" \
 | [21](docs/21-s2-auth-tenancy.md) | S2 前奏 | 鉴权、租户隔离、规则版本、产物存储抽象 |
 | [22](docs/22-ci.md) | CI/CD | 三个 job、GHCR 发布、公开仓库额度、覆盖率与盲区 |
 | [23](docs/23-s2-full.md) | S2 正式项 | JWT、租户配额、双人审批与 SLA 升级 |
+| [24](docs/24-s3-artifacts.md) | 对象存储 | S3 SigV4、预签名下载、存储抽象 |
 
 ## 章节 → 笔记 映射
 
@@ -164,6 +165,7 @@ python -m mini_harness run "给 README 加一节快速开始" \
 | [lab15](labs/lab15_otel.py) | 追踪 | 同一 trace 的 span 链、token 计量、collector 故障韧性 |
 | [lab16](labs/lab16_s2_auth.py) | 鉴权与租户 | 401/404、规则版本改判、产物抽象 |
 | [lab17](labs/lab17_s2_full.py) | S2 正式项 | JWT、配额 429、双人审批、SLA 升级 |
+| [lab18](labs/lab18_s3_artifacts.py) | S3 产物 | SigV4 PUT、预签名 GET、302/200 下载 |
 
 任务级评测：[bench/](bench/) 6 个任务（读改文件、超时、越界、审批、角色），
 `python bench/run.py --min-pass-rate 0.8` 可直接作 CI 门禁。

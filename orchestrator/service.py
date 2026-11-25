@@ -430,6 +430,19 @@ def make_server(orchestrator: Orchestrator, host: str = "127.0.0.1", port: int =
             except Exception as exc:  # noqa: BLE001
                 self._json(500, {"error": f"internal: {type(exc).__name__}"})
 
+        def _redirect(self, location: str) -> None:
+            self.send_response(302)
+            self.send_header("location", location)
+            self.send_header("content-length", "0")
+            self.end_headers()
+
+        def _raw(self, content: bytes, content_type: str = "text/markdown; charset=utf-8") -> None:
+            self.send_response(200)
+            self.send_header("content-type", content_type)
+            self.send_header("content-length", str(len(content)))
+            self.end_headers()
+            self.wfile.write(content)
+
         def _route_get(self) -> None:
             url = urlsplit(self.path)
             path, query = url.path, parse_qs(url.query)
@@ -452,6 +465,18 @@ def make_server(orchestrator: Orchestrator, host: str = "127.0.0.1", port: int =
                 )
 
             parts = path.strip("/").split("/")
+            if len(parts) == 4 and parts[0] == "v1" and parts[1] == "artifacts" and parts[3] == "download":
+                artifact = orchestrator.store.get_artifact(parts[2])
+                if artifact is None:
+                    raise KeyError(parts[2])
+                self._run_for(principal, artifact["run_id"])
+                store_impl = orchestrator.store.artifact_store
+                if artifact["path"].startswith("s3://") and hasattr(store_impl, "presign"):
+                    return self._redirect(store_impl.presign(artifact["path"]))
+                local = Path(artifact["path"])
+                if not local.is_file():
+                    raise KeyError(artifact["id"])
+                return self._raw(local.read_bytes())
             if len(parts) >= 3 and parts[0] == "v1" and parts[1] == "assessments":
                 run_id = parts[2]
                 run = self._run_for(principal, run_id)
