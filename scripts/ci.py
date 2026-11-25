@@ -3,6 +3,7 @@
 用途：GitHub Actions 因账单/额度不可用时，团队仍能在本地或 pre-push 阶段跑同一套门禁。
 
     python scripts/ci.py                # labs + worker + 容器冒烟
+    # Windows：不要用管道（| Select-Object），重定向到文件即可，见 docs/22
     python scripts/ci.py --fast         # 跳过容器（约 2 分钟）
     python scripts/ci.py --container-only
 
@@ -22,13 +23,13 @@ ROOT = Path(__file__).resolve().parents[1]
 WORKER = ROOT / "spike" / "dsh-worker"
 
 
-def run(name: str, args: list[str], *, cwd: Path = ROOT, timeout: float = 1800) -> bool:
+def run(name: str, args: list[str], *, cwd: Path = ROOT, timeout: float = 1800, capture: bool = True) -> bool:
     started = time.perf_counter()
     try:
         proc = subprocess.run(
             args,
             cwd=str(cwd),
-            capture_output=True,
+            capture_output=capture,
             text=True,
             encoding="utf-8",
             errors="replace",
@@ -43,8 +44,8 @@ def run(name: str, args: list[str], *, cwd: Path = ROOT, timeout: float = 1800) 
     elapsed = time.perf_counter() - started
     ok = proc.returncode == 0
     print(f"{'✅' if ok else '❌'} {name}（{elapsed:.0f}s，exit={proc.returncode}）")
-    if not ok:
-        tail = (proc.stdout + "\n" + proc.stderr).strip().splitlines()[-25:]
+    if not ok and capture:
+        tail = ((proc.stdout or "") + "\n" + (proc.stderr or "")).strip().splitlines()[-25:]
         for line in tail:
             print(f"   {line}")
     return ok
@@ -75,8 +76,14 @@ def main(argv: list[str] | None = None) -> int:
         results["worker:loopback"] = run(
             "worker 协议测试（loopback）", [node, "test/worker.test.js"], cwd=WORKER, timeout=300
         )
+        # Windows 下父进程用管道捕获输出时，Node 再 spawn 子进程会 EPERM；
+        # 所以这里让 spawn 测试直接继承控制台 stdio。
         results["worker:spawn"] = run(
-            "worker 子进程测试（spawn）", [node, "test/spawn.test.js"], cwd=WORKER, timeout=300
+            "worker 子进程测试（spawn）",
+            [node, "test/spawn.test.js"],
+            cwd=WORKER,
+            timeout=300,
+            capture=sys.platform != "win32",
         )
 
     if not args.fast:

@@ -1,6 +1,7 @@
 # Agent Harness 学习工程
 
 [![CI](https://github.com/zhangguanglai/Agent-Harness-Learning/actions/workflows/ci.yml/badge.svg)](https://github.com/zhangguanglai/Agent-Harness-Learning/actions/workflows/ci.yml)
+[![Release](https://github.com/zhangguanglai/Agent-Harness-Learning/actions/workflows/release.yml/badge.svg)](https://github.com/zhangguanglai/Agent-Harness-Learning/actions/workflows/release.yml)
 
 一套**可运行**的 Agent Harness 学习材料：以 [智能体漫游](https://agent.jeffjade.com/)
 （Claude Code 45 篇 + Hermes Agent 17 篇）为参照，把散落在两套产品里的机制，
@@ -118,7 +119,7 @@ python -m mini_harness run "给 README 加一节快速开始" \
 | [19](docs/19-s0-container.md) | 容器化 | S0-1：镜像分层、安全默认、网络策略与验证矩阵 |
 | [20](docs/20-otel.md) | 追踪 | S0-5：OTLP span 树、traceparent 传播、收集器与实测 |
 | [21](docs/21-s2-auth-tenancy.md) | S2 前奏 | 鉴权、租户隔离、规则版本、产物存储抽象 |
-| [22](docs/22-ci.md) | CI | 三个 job、为什么容器冒烟不带模型 Key、覆盖率与盲区 |
+| [22](docs/22-ci.md) | CI/CD | 三个 job、GHCR 发布、公开仓库额度、覆盖率与盲区 |
 
 ## 章节 → 笔记 映射
 

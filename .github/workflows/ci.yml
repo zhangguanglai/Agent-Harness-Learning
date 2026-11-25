@@ -29,6 +29,11 @@ jobs:
         with:
           node-version: "24"
 
+      - name: Static checks（编译 + 文档链接）
+        run: |
+          python -m compileall -q mini_harness runtime api orchestrator domain observability bench labs scripts
+          python scripts/check_links.py
+
       - name: Run labs, demo and bench
         run: python labs/verify.py
 
@@ -60,5 +65,17 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Build image and run smoke test
-        run: python deploy/s0-container/verify.py --build --no-model
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build image with layer cache
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/s0-container/Dockerfile
+          tags: banking-a/s0:ci
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke test（CLI / headless 入口 / MCP 包）
+        run: python deploy/s0-container/verify.py --no-build --no-model --image banking-a/s0:ci
