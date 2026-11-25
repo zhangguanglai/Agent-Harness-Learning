@@ -31,6 +31,7 @@ from domain.banking_a import __file__ as domain_file
 
 from observability import Tracer
 
+from .quota import QuotaExceeded, QuotaPolicy, check as quota_check, usage as quota_usage
 from .store import Store
 from .worker_client import WorkerClient, WorkerError
 from .workflow import AssessmentWorkflow
@@ -47,6 +48,8 @@ class Gate:
     approved: bool = False
     by: str = ""
     comment: str = ""
+    approval_id: str = ""
+    required: int = 1
 
     def wait(self, timeout: float) -> tuple[bool, str, str]:
         if not self.event.wait(timeout):
@@ -65,6 +68,10 @@ class Orchestrator:
         public_url: str | None = None,
         otel_endpoint: str | None = None,
         tokens: TokenRegistry | None = None,
+        authenticator=None,
+        quota_policy: QuotaPolicy | None = None,
+        approval_sla_seconds: float = 4 * 3600,
+        second_approval_paths: set[str] | None = None,
         artifact_dir: str | Path | None = None,
         artifact_store=None,
     ):
@@ -82,6 +89,10 @@ class Orchestrator:
         self.worker_approval = worker_approval  # auto | wait
         self.public_url = public_url
         self.tokens = tokens
+        self.auth = authenticator or tokens
+        self.quota = quota_policy or QuotaPolicy()
+        self.approval_sla_seconds = approval_sla_seconds
+        self.second_approval_paths = second_approval_paths or set()
         self.tracer = Tracer(otel_endpoint, service="orchestrator", attributes={"deployment": "s0"})
         self.spans: dict[str, object] = {}
         self.gates: dict[str, Gate] = {}
@@ -93,6 +104,7 @@ class Orchestrator:
             raise ValueError(f"未知案例：{case_id}")
         if rules_version not in self.workflow.rulesets:
             raise ValueError(f"未知规则版本：{rules_version}")
+        quota_check(self.store, tenant, self.quota)
         run = self.store.create_run(case_id, tenant, rules_version)
         self.spans[run.id] = self.tracer.start(
             "assessment.run",
@@ -120,6 +132,7 @@ class Orchestrator:
             if span is not None:
                 span.attributes["run.status"] = run.status if run else "unknown"
                 span.end(error=run.error if run and run.error else None)
+            self._record_usage(run_id)
 
     # -- agent 阶段（worker） ---------------------------------------------- #
     def _run_agent(self, run_id: str, case_id: str) -> None:
@@ -179,56 +192,115 @@ class Orchestrator:
         agent_span.attributes["agent.status"] = status
         agent_span.end()
 
+    def _record_usage(self, run_id: str) -> None:
+        """从事件里累计 token（worker 模式来自 session.event 的 usage）。"""
+        run = self.store.get_run(run_id)
+        if run is None:
+            return
+        input_tokens = output_tokens = 0
+        for event in self.store.events(run_id):
+            if event["type"] != "agent.event":
+                continue
+            payload = event.get("payload") or {}
+            raw = payload.get("event") or {}
+            if raw.get("type") == "assistant/message":
+                usage = (raw.get("data") or {}).get("usage") or {}
+                input_tokens += int(usage.get("input_tokens") or usage.get("inputTokens") or 0)
+                output_tokens += int(usage.get("output_tokens") or usage.get("outputTokens") or 0)
+        if input_tokens or output_tokens:
+            self.store.record_usage(run_id, run.tenant, input_tokens, output_tokens)
+
     # -- 审批 -------------------------------------------------------------- #
     def request_approval(self, run_id: str, action: str, extra: dict | None = None) -> tuple[bool, str, str]:
-        approval = self.store.create_approval(run_id, action)
-        gate = Gate()
+        extra = dict(extra or {})
+        required = 2 if str(extra.get("path")) in self.second_approval_paths else 1
+        approval = self.store.create_approval(
+            run_id, action, required=required, sla_seconds=self.approval_sla_seconds
+        )
+        gate = Gate(approval_id=approval["id"], required=required)
         with self._lock:
             self.gates[approval["id"]] = gate
         self.store.set_status(run_id, "waiting_approval")
         self.store.append_event(
             run_id,
             "approval.requested",
-            {"approval_id": approval["id"], "action": action, **(extra or {})},
+            {"approval_id": approval["id"], "action": action, "required": required, **extra},
         )
         run_span = self.spans.get(run_id)
         approval_span = self.tracer.start(
             "approval.wait",
             parent=run_span.traceparent if run_span else None,
-            attributes={"run.id": run_id, "approval.action": action},
+            attributes={"run.id": run_id, "approval.action": action, "approval.required": required},
         )
-        approved, by, comment = gate.wait(self.approval_timeout_s)
-        approval_span.attributes["approval.approved"] = approved
-        approval_span.attributes["approval.by"] = by
-        approval_span.end()
-        self.store.resolve_approval(approval["id"], approved, by, comment)
+
+        created = time.time()
+        deadline = created + self.approval_sla_seconds * 2
+        escalated = False
+        while not gate.event.wait(0.2):
+            now = time.time()
+            if not escalated and now >= created + self.approval_sla_seconds:
+                escalated = True
+                self.store.escalate(approval["id"])
+                self.store.append_event(
+                    run_id,
+                    "approval.escalated",
+                    {"approval_id": approval["id"], "sla_seconds": self.approval_sla_seconds},
+                )
+            if now >= deadline:
+                gate.approved, gate.by, gate.comment = False, "timeout", "approval expired without decision"
+                break
+
+        approved, by, comment = gate.approved, gate.by, gate.comment
+        self.store.finalize_approval(approval["id"], "approved" if approved else "rejected", by, comment)
         self.store.append_event(
             run_id,
             "approval.resolved",
             {"approval_id": approval["id"], "approved": approved, "by": by, "comment": comment},
         )
+        approval_span.attributes["approval.approved"] = approved
+        approval_span.attributes["approval.by"] = by
+        approval_span.end()
         with self._lock:
             self.gates.pop(approval["id"], None)
-        if self.store.get_run(run_id) and self.store.get_run(run_id).status == "waiting_approval":
+        run = self.store.get_run(run_id)
+        if run and run.status == "waiting_approval":
             self.store.set_status(run_id, "running")
         return approved, by, comment
 
-    def approve(self, run_id: str, approved: bool, by: str, comment: str = "") -> dict:
+    def approve(self, run_id: str, approved: bool, by: str, comment: str = "", roles: tuple[str, ...] = ()) -> dict:
         pending = self.store.pending_approval(run_id)
         if not pending:
             raise ValueError("没有待审批的请求")
-        resolved = self.store.resolve_approval(pending["id"], approved, by, comment)
-        if resolved is None:
-            raise ValueError("审批已被处理")
+        approval_id = pending["id"]
         with self._lock:
-            gate = self.gates.get(pending["id"])
+            gate = self.gates.get(approval_id)
         if gate is None:
             raise ValueError("审批闸门不存在（可能已超时）")
-        gate.approved = approved
-        gate.by = by
-        gate.comment = comment
-        gate.event.set()
-        return resolved
+
+        decisions = self.store.add_decision(approval_id, by, approved, comment)
+        if not approved:
+            gate.approved, gate.by, gate.comment = False, by, comment
+            gate.event.set()
+            self.store.finalize_approval(approval_id, "rejected", by, comment)
+            return {"status": "rejected", "approval_id": approval_id, "by": by}
+
+        required = pending["required_approvals"]
+        approvals = sum(1 for item in decisions if item["approved"])
+        supervisor = "supervisor" in roles
+        if approvals >= required or (pending["escalated"] and supervisor):
+            gate.approved, gate.by, gate.comment = True, by, comment
+            gate.event.set()
+            self.store.finalize_approval(approval_id, "approved", by, comment)
+            return {"status": "approved", "approval_id": approval_id, "by": by, "approvals": approvals, "required": required}
+
+        return {
+            "status": "pending",
+            "approval_id": approval_id,
+            "by": by,
+            "approvals": approvals,
+            "required": required,
+            "escalated": pending["escalated"],
+        }
 
     def worker_approval_decision(self, body: dict) -> dict:
         """worker 的审批回调：auto 直接放行；wait 走与人工审批相同的闸门。"""
@@ -313,11 +385,11 @@ def make_server(orchestrator: Orchestrator, host: str = "127.0.0.1", port: int =
             return json.loads(self.rfile.read(length).decode("utf-8"))
 
         def _principal(self, scope: str) -> Principal | None:
-            if orchestrator.tokens is None:
-                # 开发模式：未配置 token 时放行，但固定 tenant=demo
+            if orchestrator.auth is None:
+                # 开发模式：未配置鉴权时放行，但固定 tenant=demo
                 return Principal(token="dev", tenant="demo", user="dev", roles=("admin",))
             try:
-                principal = orchestrator.tokens.authenticate(self.headers.get("Authorization"))
+                principal = orchestrator.auth.authenticate(self.headers.get("Authorization"))
             except AuthError as exc:
                 self._json(401, {"error": str(exc)})
                 return None
@@ -330,7 +402,7 @@ def make_server(orchestrator: Orchestrator, host: str = "127.0.0.1", port: int =
             run = orchestrator.store.get_run(run_id)
             if run is None:
                 raise KeyError(run_id)
-            if orchestrator.tokens is not None and run.tenant != principal.tenant:
+            if orchestrator.auth is not None and run.tenant != principal.tenant:
                 raise KeyError(run_id)  # 跨租户一律 404，不泄露存在性
             return run
 
@@ -347,6 +419,8 @@ def make_server(orchestrator: Orchestrator, host: str = "127.0.0.1", port: int =
                 self._json(404, {"error": f"not found: {exc.args[0] if exc.args else ''}"})
             except PermissionError as exc:
                 self._json(403, {"error": str(exc)})
+            except QuotaExceeded as exc:
+                self._json(429, {"error": str(exc), "retry_after_s": exc.retry_after_s})
             except ValueError as exc:
                 self._json(400, {"error": str(exc)})
             except WorkerError as exc:
@@ -366,8 +440,16 @@ def make_server(orchestrator: Orchestrator, host: str = "127.0.0.1", port: int =
             if principal is None:
                 return
             if path == "/v1/approvals":
-                tenant = None if orchestrator.tokens is None else principal.tenant
+                tenant = None if orchestrator.auth is None else principal.tenant
                 return self._json(200, {"approvals": orchestrator.pending(tenant)})
+            if path == "/v1/usage":
+                return self._json(
+                    200,
+                    {
+                        "usage": quota_usage(orchestrator.store, principal.tenant),
+                        "limits": orchestrator.quota.describe(),
+                    },
+                )
 
             parts = path.strip("/").split("/")
             if len(parts) >= 3 and parts[0] == "v1" and parts[1] == "assessments":
@@ -395,7 +477,7 @@ def make_server(orchestrator: Orchestrator, host: str = "127.0.0.1", port: int =
                 if principal is None:
                     return
                 body = self._body()
-                if orchestrator.tokens is None:
+                if orchestrator.auth is None:
                     tenant = str(body.get("tenant") or principal.tenant)
                 else:
                     tenant = str(body.get("tenant") or principal.tenant)
@@ -418,9 +500,13 @@ def make_server(orchestrator: Orchestrator, host: str = "127.0.0.1", port: int =
                 self._run_for(principal, parts[2])
                 body = self._body()
                 result = orchestrator.approve(
-                    parts[2], bool(body.get("approved")), str(body.get("by") or principal.user), str(body.get("comment") or "")
+                    parts[2],
+                    bool(body.get("approved")),
+                    str(body.get("by") or principal.user),
+                    str(body.get("comment") or ""),
+                    roles=principal.roles,
                 )
-                return self._json(200, result)
+                return self._json(202 if result.get("status") == "pending" else 200, result)
             return self._json(404, {"error": f"unknown path: {url.path}"})
 
         def _stream(self, run_id: str, after: int) -> None:

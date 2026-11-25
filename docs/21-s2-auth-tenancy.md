@@ -72,6 +72,8 @@ class ArtifactStore(Protocol):
 ✓ 抽象：MemoryArtifactStore 与 LocalArtifactStore 同接口
 ```
 
+> 正式项（JWT / 配额 / 双人审批）见 [23 S2 正式项](23-s2-full.md)。
+
 ## 6. S2 还差什么
 
 | 项 | 现状 | 下一步 |

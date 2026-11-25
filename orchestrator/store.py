@@ -38,6 +38,10 @@ CREATE TABLE IF NOT EXISTS approvals (
   status TEXT NOT NULL, requested_at REAL NOT NULL,
   decided_at REAL, decided_by TEXT, comment TEXT
 );
+CREATE TABLE IF NOT EXISTS usage_ledger (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, run_id TEXT NOT NULL, tenant TEXT NOT NULL,
+  input_tokens INTEGER NOT NULL DEFAULT 0, output_tokens INTEGER NOT NULL DEFAULT 0, ts REAL NOT NULL
+);
 CREATE TABLE IF NOT EXISTS artifacts (
   id TEXT PRIMARY KEY, run_id TEXT NOT NULL, version INTEGER NOT NULL,
   path TEXT NOT NULL, sha256 TEXT NOT NULL, status TEXT NOT NULL, created_at REAL NOT NULL
@@ -67,6 +71,10 @@ class Store:
         self._conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
         self._conn.executescript(SCHEMA)
         self._ensure_column("runs", "rules_version", "TEXT NOT NULL DEFAULT 'v1'")
+        self._ensure_column("approvals", "required_approvals", "INTEGER NOT NULL DEFAULT 1")
+        self._ensure_column("approvals", "sla_seconds", "REAL")
+        self._ensure_column("approvals", "escalated_at", "REAL")
+        self._ensure_column("approvals", "decisions", "TEXT")
         self._conn.commit()
 
     def _ensure_column(self, table: str, column: str, ddl: str) -> None:
@@ -143,15 +151,47 @@ class Store:
         ]
 
     # -- approvals --------------------------------------------------------- #
-    def create_approval(self, run_id: str, action: str) -> dict:
-        approval = {"id": f"apr_{uuid.uuid4().hex[:10]}", "run_id": run_id, "action": action, "status": "pending", "requested_at": time.time()}
+    def create_approval(self, run_id: str, action: str, *, required: int = 1, sla_seconds: float | None = None) -> dict:
+        approval = {
+            "id": f"apr_{uuid.uuid4().hex[:10]}",
+            "run_id": run_id,
+            "action": action,
+            "status": "pending",
+            "requested_at": time.time(),
+            "required_approvals": max(1, int(required)),
+            "sla_seconds": sla_seconds,
+        }
         with self._lock:
             self._conn.execute(
-                "INSERT INTO approvals (id, run_id, action, status, requested_at) VALUES (?, ?, ?, ?, ?)",
-                (approval["id"], run_id, action, "pending", approval["requested_at"]),
+                "INSERT INTO approvals (id, run_id, action, status, requested_at, required_approvals, sla_seconds, decisions) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (approval["id"], run_id, action, "pending", approval["requested_at"], approval["required_approvals"], sla_seconds, "[]"),
             )
             self._conn.commit()
         return approval
+
+    def add_decision(self, approval_id: str, by: str, approved: bool, comment: str = "") -> list[dict]:
+        with self._lock:
+            row = self._conn.execute("SELECT decisions, status FROM approvals WHERE id = ?", (approval_id,)).fetchone()
+            if not row or row[1] != "pending":
+                return []
+            decisions = json.loads(row[0] or "[]")
+            decisions.append({"by": by, "approved": approved, "comment": comment, "ts": time.time()})
+            self._conn.execute("UPDATE approvals SET decisions = ? WHERE id = ?", (json.dumps(decisions, ensure_ascii=False), approval_id))
+            self._conn.commit()
+        return decisions
+
+    def escalate(self, approval_id: str) -> None:
+        with self._lock:
+            self._conn.execute("UPDATE approvals SET escalated_at = ? WHERE id = ? AND escalated_at IS NULL", (time.time(), approval_id))
+            self._conn.commit()
+
+    def finalize_approval(self, approval_id: str, status: str, by: str, comment: str = "") -> None:
+        with self._lock:
+            self._conn.execute(
+                "UPDATE approvals SET status = ?, decided_at = ?, decided_by = ?, comment = ? WHERE id = ?",
+                (status, time.time(), by, comment, approval_id),
+            )
+            self._conn.commit()
 
     def resolve_approval(self, approval_id: str, approved: bool, by: str, comment: str = "") -> dict | None:
         with self._lock:
@@ -169,10 +209,53 @@ class Store:
     def pending_approval(self, run_id: str) -> dict | None:
         with self._lock:
             row = self._conn.execute(
-                "SELECT id, run_id, action, status FROM approvals WHERE run_id = ? AND status = 'pending' ORDER BY requested_at DESC LIMIT 1",
+                "SELECT id, run_id, action, status, required_approvals, sla_seconds, escalated_at, requested_at, decisions "
+                "FROM approvals WHERE run_id = ? AND status = 'pending' ORDER BY requested_at DESC LIMIT 1",
                 (run_id,),
             ).fetchone()
-        return {"id": row[0], "run_id": row[1], "action": row[2], "status": row[3]} if row else None
+        if not row:
+            return None
+        return {
+            "id": row[0],
+            "run_id": row[1],
+            "action": row[2],
+            "status": row[3],
+            "required_approvals": row[4] or 1,
+            "sla_seconds": row[5],
+            "escalated": row[6] is not None,
+            "requested_at": row[7],
+            "decisions": json.loads(row[8] or "[]"),
+        }
+
+    # -- usage ------------------------------------------------------------- #
+    def record_usage(self, run_id: str, tenant: str, input_tokens: int, output_tokens: int) -> None:
+        with self._lock:
+            self._conn.execute(
+                "INSERT INTO usage_ledger (run_id, tenant, input_tokens, output_tokens, ts) VALUES (?, ?, ?, ?, ?)",
+                (run_id, tenant, int(input_tokens), int(output_tokens), time.time()),
+            )
+            self._conn.commit()
+
+    def count_active(self, tenant: str) -> int:
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT COUNT(*) FROM runs WHERE tenant = ? AND status IN ('running','waiting_approval','queued')",
+                (tenant,),
+            ).fetchone()
+        return int(row[0])
+
+    def count_runs_since(self, tenant: str, since: float) -> int:
+        with self._lock:
+            row = self._conn.execute("SELECT COUNT(*) FROM runs WHERE tenant = ? AND created_at >= ?", (tenant, since)).fetchone()
+        return int(row[0])
+
+    def sum_tokens_since(self, tenant: str, since: float) -> int:
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT COALESCE(SUM(input_tokens + output_tokens), 0) FROM usage_ledger WHERE tenant = ? AND ts >= ?",
+                (tenant, since),
+            ).fetchone()
+        return int(row[0])
 
     # -- artifacts --------------------------------------------------------- #
     def write_artifact(self, run_id: str, filename: str, content: str, *, status: str) -> dict:
